@@ -126,28 +126,31 @@ GET /api/verify-report
 
 #### Step 1: Fake Detection
 
-**Image Deepfakes (`detectImageFake`)**
+**Image Content Analysis (`detectImageFake`)**
 
 ```
 Image (base64)
     ↓
-HuggingFace API
-  dima806/deepfake_vs_real_image_detection
+Sightengine API
+  ├─ Nudity Detection
+  ├─ Weapon Detection
+  ├─ Offensive Content Detection
+  └─ Face Detection
     ↓
-Model: Xception (pretrained)
+Suspicion Score Calculation:
+  - Inappropriate content → +0.25
+  - Weapons/Violence → +0.25
+  - Offensive content → +0.15
     ↓
-Output: [
-  { label: "real", score: 0.85 },
-  { label: "fake", score: 0.15 }
-]
+Output: suspicion_score (0-1)
     ↓
 Return: fake_score (0-1)
 ```
 
-**Why Xception?**
-- ✅ Fast (good for real-time)
-- ✅ 95%+ accuracy on deepfakes
-- ✅ Trained on diverse datasets
+**Why Sightengine?**
+- ✅ Content moderation expertise
+- ✅ Real-time processing
+- ✅ Multiple detection models in one API
 - ✅ Works with HuggingFace API
 
 **Text Fake Detection (`detectTextFake`)**
@@ -155,96 +158,107 @@ Return: fake_score (0-1)
 ```
 Text Description
     ↓
-HuggingFace API
-  roberta-base-openai-detector
+Heuristic Analysis
+    ├─ Excessive CAPS detection
+    ├─ Character repetition check
+    ├─ Spam keyword matching
+    ├─ Suspicious URL count
+    └─ Text length validation
     ↓
-Model: RoBERTa (fine-tuned)
-    ↓
-Detects: AI-generated vs human text
-    ↓
-Output: [
-  { label: "human", score: 0.92 },
-  { label: "fake", score: 0.08 }
-]
+Spam Score Calculation:
+  - Excessive caps (>70%) → +0.3
+  - Repeated chars (4+) → +0.2
+  - Spam keywords → +0.4
+  - Multiple URLs (>2) → +0.3
+  - Invalid length → +0.15
     ↓
 Return: spam_score (0-1)
 ```
 
-**Why RoBERTa?**
-- ✅ Trained on GPT-2/3 vs human text
-- ✅ 98% accuracy on AI detection
-- ✅ Fast inference
-- ✅ OpenAI detector (trusted)
+**Why Heuristics?**
+- ✅ Fast and lightweight
+- ✅ No external API calls for text
+- ✅ Complements Sightengine image analysis
+- ✅ Catches obvious spam patterns
 
 #### Step 2: Consistency Check
 
-**CLIP Image-Text Matching (`clipImageTextMatch`)**
+**Image-Text Keyword Matching (`clipImageTextMatch`)**
 
 ```
-Image + Text Description
+Text Description
     ↓
-OpenAI CLIP ViT-B/32
+Emergency Keyword Extraction
+    ├─ Fire keywords: ["fire", "burning", "flame", ...]
+    ├─ Water keywords: ["flood", "water", "drowning", ...]
+    ├─ Accident keywords: ["accident", "crash", "vehicle", ...]
+    ├─ Building keywords: ["building", "collapse", "debris", ...]
+    └─ Crowd keywords: ["crowd", "gathering", "people", ...]
     ↓
-Process:
-  1. Encode image to vector (512-dim)
-  2. Encode text to vector (512-dim)
-  3. Compute cosine similarity
+Match Score Calculation:
+  - Each matched category → +0.2
+  - Max score: 1.0
     ↓
-Output: similarity (0-1)
-    ↓
-Decision:
-  > 0.7 → Good match ✓
-  0.5-0.7 → Partial match ⚠️
-  < 0.5 → Mismatch ❌
+Output: match_score (0-1)
 ```
 
-**Example:**
+**Examples:**
 ```
-Image: [fire, building, smoke]
-Text: "Fire on Main Street"
-Similarity: 0.92 ✓ MATCH
+Text: "Major fire on Main Street with explosion"
+Matched: fire, accident
+Score: 0.4 ✓
 
-Image: [fire, building, smoke]
-Text: "Broken streetlight downtown"
-Similarity: 0.35 ❌ MISMATCH → Suspicious!
+Text: "Broken streetlight"
+Matched: none
+Score: 0.0 ⚠️
 ```
 
-**Why CLIP?**
-- ✅ Zero-shot learning (no retraining needed)
-- ✅ Robust cross-modal understanding
-- ✅ 88%+ accuracy on matching tasks
-- ✅ Works with real-world edge cases
+**Why Keyword Matching?**
+- ✅ Simple and interpretable
+- ✅ Fast processing
+- ✅ No vision model required
+- ✅ Can be enhanced with NLP later
 
 #### Step 3: Scene Understanding
 
-**Object Detection (`detectSceneObjects`)**
+**Content-based Scene Analysis (`detectSceneObjects`)**
 
 ```
 Image
     ↓
-Facebook DETR ResNet-50
+Sightengine API
+    ├─ Weapon Detection
+    ├─ Property Tags
+    └─ Face Detection
     ↓
-Process:
-  1. Encode image features
-  2. Detect objects + positions
-  3. Filter high-confidence (>0.5)
-  4. Return top 10 objects
+Extract Detected Properties
+    (threshold: >0.5 confidence)
     ↓
 Output: [
-  { label: "fire", score: 0.95 },
-  { label: "person", score: 0.87 },
-  { label: "building", score: 0.92 }
+  "vehicle",
+  "person",
+  "outdoor",
+  "building"
 ]
     ↓
-Extraction: ["fire", "person", "building"]
+Top 10 properties returned
 ```
 
-**Hazard Keywords:**
+**Sightengine Tags:**
 ```
-CRITICAL:
-  - fire 🔥
-  - collapse
-  - explosion
+- weapon
+- vehicle (cars, trucks)
+- person (faces, people)
+- outdoor/indoor
+- nature
+- building
+```
+
+**Why Sightengine Tags?**
+- ✅ Integrated with moderation API
+- ✅ Fast multi-model inference
+- ✅ Content-aware detection
+- ✅ Single API for all image analysis
   - person_injured
   - landslide
 
