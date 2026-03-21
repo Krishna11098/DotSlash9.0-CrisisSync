@@ -1,1 +1,1 @@
-# XORcists
+# XORcists dotslash 2026
