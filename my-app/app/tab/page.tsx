@@ -3,18 +3,14 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/app/contexts/AuthContext'
-import { createLeadWithOfflineSync, getCachedEvents, syncEventsCache, syncEverything } from '@/lib/offline-sync'
+import { createLeadWithOfflineSync, syncEverything } from '@/lib/offline-sync'
 import { moderateRemarkWithWordList } from '@/lib/remark-moderation'
 import { isValidEmail, isValidPhone, validateMaxLength, validateRequiredText } from '@/lib/validation'
 import { Phone, Mail, User, Building2, FileText, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 import ProtectedLayout from '@/app/components/ProtectedLayout'
 import SyncStatusIndicator from '@/app/components/SyncStatusIndicator'
 
-type EventOption = {
-    id: string
-    event_code: string
-    name: string
-}
+
 
 export default function TabPage() {
     const { user } = useAuth()
@@ -22,9 +18,7 @@ export default function TabPage() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
-    const [events, setEvents] = useState<EventOption[]>([])
-    const [eventsLoading, setEventsLoading] = useState(true)
-    const [selectedEventId, setSelectedEventId] = useState('')
+
 
     const [formData, setFormData] = useState({
         name: '',
@@ -45,24 +39,7 @@ export default function TabPage() {
         }))
     }
 
-    useEffect(() => {
-        const fetchEvents = async () => {
-            try {
-                const data = await syncEventsCache()
-                setEvents(Array.isArray(data) ? (data as EventOption[]) : [])
-            } catch (err) {
-                const cachedEvents = await getCachedEvents()
-                setEvents(Array.isArray(cachedEvents) ? (cachedEvents as EventOption[]) : [])
-                if (!cachedEvents.length) {
-                    setError('Failed to load events')
-                }
-            } finally {
-                setEventsLoading(false)
-            }
-        }
 
-        fetchEvents()
-    }, [])
 
     useEffect(() => {
         const handleOnline = () => {
@@ -82,10 +59,6 @@ export default function TabPage() {
 
         try {
             // Validation
-            if (!selectedEventId) {
-                setError('Please select an event before submitting')
-                return
-            }
 
             const nameError = validateRequiredText('Name', formData.name)
             if (nameError) {
@@ -130,7 +103,7 @@ export default function TabPage() {
 
             // Prepare data
             const leadData = {
-                event_id: selectedEventId,
+                event_id: 'default',
                 name: formData.name.trim(),
                 email: formData.email.trim(),
                 phone: formData.phone.trim(),
@@ -197,32 +170,6 @@ export default function TabPage() {
                     {/* Form Card */}
                     <div className="bg-white rounded-xl shadow-lg p-8">
                         <form onSubmit={handleSubmit} className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Event <span className="text-red-600">*</span>
-                                </label>
-                                <select
-                                    value={selectedEventId}
-                                    onChange={(e) => {
-                                        setSelectedEventId(e.target.value)
-                                        if (error) {
-                                            setError('')
-                                        }
-                                    }}
-                                    required
-                                    disabled={eventsLoading}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition disabled:bg-gray-100"
-                                >
-                                    <option value="">
-                                        {eventsLoading ? 'Loading events...' : 'Select event'}
-                                    </option>
-                                    {events.map((event) => (
-                                        <option key={event.id} value={event.id}>
-                                            {event.event_code} - {event.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
 
                             {/* Name Field */}
                             <div>

@@ -235,8 +235,7 @@ export default function LandingPage() {
             <div>
               <h4 className="font-semibold text-slate-900 mb-4">Product</h4>
               <ul className="space-y-2">
-                <li><Link href="/tab" className="text-slate-600 hover:text-blue-600 transition-colors">Features</Link></li>
-                <li><Link href="/staff" className="text-slate-600 hover:text-blue-600 transition-colors">For Teams</Link></li>
+                <li><Link href="/tab" className="text-slate-600 hover:text-blue-600 transition-colors">Lead Form</Link></li>
                 <li><Link href="/install" className="text-slate-600 hover:text-blue-600 transition-colors">Install App</Link></li>
               </ul>
             </div>

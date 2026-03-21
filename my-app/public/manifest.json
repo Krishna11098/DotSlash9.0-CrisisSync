@@ -2,7 +2,7 @@
   "name": "XSpark CRM - Lead Management System",
   "short_name": "XSpark CRM",
   "description": "Streamlined lead management for events and sales - works offline",
-  "start_url": "/",
+  "start_url": "/tab",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#8b5cf6",
@@ -60,6 +60,18 @@
   "categories": ["business", "productivity"],
   "shortcuts": [
     {
+      "name": "Lead Form",
+      "short_name": "Lead Form",
+      "description": "Fill the lead entry form",
+      "url": "/tab",
+      "icons": [
+        {
+          "src": "/icons/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
       "name": "Admin Dashboard",
       "short_name": "Admin",
       "description": "View admin dashboard",
@@ -73,3 +85,4 @@
     }
   ]
 }
+
