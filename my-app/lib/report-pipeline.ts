@@ -381,7 +381,7 @@ export async function detectSceneObjects(imageBase64: string): Promise<string[]>
     const formData = new FormData();
     const blob = new Blob([imageBuffer], { type: "image/jpeg" });
     formData.append("media", blob);
-    formData.append("models", "weapons,properties,face");
+    formData.append("models", "weapons,properties");
     formData.append("api_user", process.env.SIGHTENGINE_USER_ID || "");
     formData.append("api_secret", process.env.SIGHTENGINE_API_KEY || "");
 
@@ -400,27 +400,26 @@ export async function detectSceneObjects(imageBase64: string): Promise<string[]>
     // Extract detected objects
     const objects: string[] = [];
     
+    console.log(`🔍 [detectSceneObjects] API Response:`, JSON.stringify(result));
+    
     // Add weapon detection results
     if (result.weapon?.raw > 0.5) {
       objects.push("weapon");
     }
     
-    // Add vehicle detection if available
+    // Extract all properties with confidence > threshold
     if (result.properties) {
+      console.log(`🔍 [detectSceneObjects] Properties detected:`, Object.keys(result.properties));
       for (const [prop, score] of Object.entries(result.properties)) {
-        if ((score as number) > 0.5) {
+        if ((score as number) > 0.2) { // Lower threshold to catch more objects
           objects.push(prop);
+          console.log(`   - ${prop}: ${(score as number).toFixed(2)}`);
         }
       }
     }
     
-    // Emergency-related keyword extraction from properties
-    const emergencyTerms = ["vehicle", "person", "car", "building", "outdoor", "indoor", "nature"];
-    const detectedTerms = Object.keys(result.properties || {})
-      .filter((key: string) => (result.properties[key] || 0) > 0.5)
-      .slice(0, 10);
-    
-    return detectedTerms.length > 0 ? detectedTerms : objects;
+    console.log(`✅ [detectSceneObjects] Final objects array: [${objects.join(", ")}]`);
+    return objects;
   } catch (error) {
     console.error("Object detection error:", error);
     return [];
@@ -559,6 +558,29 @@ const MUNICIPAL_KEYWORDS = [
   "repair needed",
   "civic issue",
   "city repair",
+  "pothole",
+  "road issue",
+  "street damage",
+  "asphalt damage",
+  "broken asphalt",
+  "uneven road",
+  "raised pavement",
+  "sunken road",
+  "road hazard",
+  "traffic hazard",
+  "broken pavement",
+  "uneven pavement",
+  "street hole",
+  "road hole",
+  "pit hole",
+  "crater",
+  "ditch",
+  "road depression",
+  "surface damage",
+  "infrastructure",
+  "public works",
+  "civic maintenance",
+  "road maintenance",
 ];
 
 const POLICE_KEYWORDS = [
@@ -626,8 +648,35 @@ function classifyEmergencyCategory(
 ): { category: EmergencyCategory; confidence: number; scores: Record<string, number> } {
   const textLower = text.toLowerCase();
   
-  console.log(`🔍 Classifying text: "${textLower}"`);
-  console.log(`🔍 Objects detected: ${objects.join(", ") || "none"}`);
+  console.log(`\n🔍 [CLASSIFICATION] START`);
+  console.log(`\n📝 Input Text: "${text}"`);
+  console.log(`🔍 Input Objects: [${objects.join(", ") || "none"}]`);
+  
+  // ===== TEXT LOCK FEATURE =====
+  // If strong infrastructure keywords are in ORIGINAL text, this category is locked
+  const infrastructureKeywords = ["pothole", "road damage", "pavement", "asphalt", "street damage", "road hazard"];
+  const hasInfrastructureKeyword = infrastructureKeywords.some(kw => 
+    new RegExp(`\\b${kw}\\b`, "i").test(text)
+  );
+  
+  if (hasInfrastructureKeyword) {
+    console.log(`🔒 [TEXT LOCK] Infrastructure keyword detected - LOCKING category as Municipal`);
+    return {
+      category: "Municipal",
+      confidence: 0.95, // Very high confidence
+      scores: { Hospital: 0, Fire: 0, Municipal: 100, Police: 0 }
+    };
+  }
+  
+  // ===== EMERGENCY TEXT LOCK =====
+  const emergencyKeywords = ["fire", "burning", "police", "crime", "injured", "bleeding", "unconscious"];
+  const hasEmergencyKeyword = emergencyKeywords.some(kw =>
+    new RegExp(`\\b${kw}\\b`, "i").test(text)
+  );
+  
+  if (hasEmergencyKeyword) {
+    console.log(`🔒 [TEXT LOCK] Emergency keyword detected - Will process normally with high confidence`);
+  }
   
   let categoryScores = {
     Hospital: 0,
@@ -666,12 +715,21 @@ function classifyEmergencyCategory(
   const totalPrimaryScore = Object.values(categoryScores).reduce((a, b) => a + b, 0);
   
   console.log(`\n📊 Primary keywords total: ${totalPrimaryScore}`);
+  console.log(`   Hospital: ${categoryScores.Hospital}, Fire: ${categoryScores.Fire}, Municipal: ${categoryScores.Municipal}, Police: ${categoryScores.Police}`);
+  
+  // ===== ANTI-INTERFERENCE LOCK =====
+  // If Municipal got a primary pothole match, suppress Hospital secondary keywords  
+  const municipalHasPotholeLock = categoryScores.Municipal > 0 && /\bpothole\b/i.test(textLower);
+  
+  if (municipalHasPotholeLock) {
+    console.log(`\n🔒 [SECONDARY SUPPRESS] Pothole primary match found - LOCKING out Hospital secondary keywords`);
+  }
   
   if (totalPrimaryScore < 10) {
     // If primary keywords didn't match strongly, check secondary
     console.log(`\n📋 Primary score low, checking SECONDARY keywords:`);
     const secondaryMap = {
-      Hospital: HOSPITAL_KEYWORDS,
+      Hospital: municipalHasPotholeLock ? [] : HOSPITAL_KEYWORDS, // ✅ SUPPRESS if pothole locked
       Fire: FIRE_KEYWORDS,
       Municipal: MUNICIPAL_KEYWORDS,
       Police: POLICE_KEYWORDS,
@@ -679,6 +737,10 @@ function classifyEmergencyCategory(
 
     (Object.entries(secondaryMap) as Array<[EmergencyCategory, string[]]>).forEach(
       ([category, keywords]) => {
+        if (keywords.length === 0 && category === "Hospital") {
+          console.log(`   ${category}: [SUPPRESSED - Infrastructure lock active]`);
+          return;
+        }
         keywords.forEach((kw) => {
           const matches = matchKeyword(textLower, kw);
           if (matches > 0) {
@@ -691,6 +753,8 @@ function classifyEmergencyCategory(
         });
       }
     );
+  } else {
+    console.log(`✅ Primary keywords strong enough - SKIPPING secondary keywords`);
   }
 
   // Normalize scores (0-100)
@@ -706,6 +770,11 @@ function classifyEmergencyCategory(
   const entries = Object.entries(categoryScores).sort(([, a], [, b]) => b - a);
   const [winnerName, winnerScore] = entries[0];
   const [, runnerUpScore] = entries[1];
+  
+  console.log(`\n📊 Raw scores after keyword matching:`);
+  entries.forEach(([cat, score]) => {
+    console.log(`   ${cat}: ${score}`);
+  });
 
   // Calculate confidence (0-1)
   let confidence = 0;
@@ -718,6 +787,7 @@ function classifyEmergencyCategory(
     const gap = winnerScore - runnerUpScore;
     const gapRatio = gap / (winnerScore + 5);
     confidence = Math.min(0.5 + gapRatio * 0.5, 1.0); // Range 0.5-1.0
+    console.log(`   Gap: ${gap}, GapRatio: ${gapRatio.toFixed(3)}, Confidence: ${(confidence * 100).toFixed(1)}%`);
   }
 
   const category = winnerName as EmergencyCategory;
@@ -888,6 +958,99 @@ function analyzeSeverity(objects: string[], text: string): "LOW" | "MEDIUM" | "H
 }
 
 /**
+ * 🚨 Fraud Detection: Check for Department Mismatch
+ * If AI detects one thing but user selects completely mismatched department with high AI confidence,
+ * it's likely fraudulent (e.g., describing fire but user selects police)
+ */
+function detectDepartmentMismatchFraud(
+  aiDetectedCategory: EmergencyCategory,
+  userSelectedDepartments: ('hospital' | 'fire' | 'police' | 'municipal corporation')[] | undefined,
+  classificationConfidence: number
+): {
+  fraud_score: number;
+  fraud_flag: boolean;
+  fraud_reason: string;
+  department_mismatch: boolean;
+} {
+  console.log(`\n🚨 STEP 0: Fraud Detection - Department Mismatch Check`);
+  
+  if (!userSelectedDepartments || userSelectedDepartments.length === 0) {
+    console.log(`   ℹ️ No user departments to compare, skipping mismatch check`);
+    return {
+      fraud_score: 0,
+      fraud_flag: false,
+      fraud_reason: "",
+      department_mismatch: false,
+    };
+  }
+
+  // Map AI category to user department format
+  const categoryToUserDept: Record<EmergencyCategory, 'hospital' | 'fire' | 'police' | 'municipal corporation'> = {
+    Hospital: 'hospital',
+    Fire: 'fire',
+    Police: 'police',
+    Municipal: 'municipal corporation',
+  };
+
+  const expectedDept = categoryToUserDept[aiDetectedCategory];
+  const userSelected = userSelectedDepartments[0]; // Check primary selection
+
+  console.log(`   AI Detected: ${aiDetectedCategory} → Expected Department: ${expectedDept}`);
+  console.log(`   User Selected: ${userSelected}`);
+  console.log(`   AI Confidence: ${(classificationConfidence * 100).toFixed(1)}%`);
+
+  // Calculate mismatch severity
+  const isMismatch = expectedDept !== userSelected;
+  
+  if (!isMismatch) {
+    console.log(`   ✅ Department matches AI detection - No fraud indicator`);
+    return {
+      fraud_score: 0,
+      fraud_flag: false,
+      fraud_reason: "",
+      department_mismatch: false,
+    };
+  }
+
+  // If there's a mismatch, ANY mismatch is suspicious and gets penalized
+  // Even if confidence is moderate, mismatches suggest user is trying to game the system
+  let fraudScore = 0;
+  let fraudReason = "";
+
+  // AGGRESSIVE THRESHOLDS: Lower thresholds = faster fraud detection
+  if (classificationConfidence >= 0.60) {
+    // Confidence >= 60% + mismatch = CRITICAL FRAUD
+    fraudScore = 0.95; // Very high fraud score
+    fraudReason = `🚨 CRITICAL MISMATCH: AI confident (${(classificationConfidence * 100).toFixed(0)}%) this is a ${aiDetectedCategory} incident, but user selected ${userSelected}. HIGH FRAUD PROBABILITY.`;
+  } else if (classificationConfidence >= 0.50) {
+    // Confidence 50-59% + mismatch = HIGH FRAUD
+    fraudScore = 0.85;
+    fraudReason = `🚨 HIGH MISMATCH: AI detected ${aiDetectedCategory} (${(classificationConfidence * 100).toFixed(0)}% confidence), user selected ${userSelected}. Likely fraudulent behavior.`;
+  } else if (classificationConfidence >= 0.40) {
+    // Confidence 40-49% + mismatch = MEDIUM FRAUD
+    fraudScore = 0.75;
+    fraudReason = `⚠️ NOTABLE MISMATCH: AI suggests ${aiDetectedCategory} (${(classificationConfidence * 100).toFixed(0)}%), user selected ${userSelected}. Suspicious.`;
+  } else if (classificationConfidence >= 0.30) {
+    // Confidence 30-39% + mismatch = MILD FRAUD
+    fraudScore = 0.6;
+    fraudReason = `⚡ POSSIBLE MISMATCH: AI weak signal for ${aiDetectedCategory}, user selected ${userSelected}. Applying caution.`;
+  } else {
+    // Very low confidence + mismatch = acceptable user choice
+    fraudScore = 0.1;
+    fraudReason = `ℹ️ WEAK AI SIGNAL (${(classificationConfidence * 100).toFixed(0)}%): User selected ${userSelected}. Accepting choice.`;
+  }
+
+  console.log(`   ${fraudReason}`);
+  
+  return {
+    fraud_score: fraudScore,
+    fraud_flag: fraudScore >= 0.6, // Flag only if moderate-to-high fraud likelihood
+    fraud_reason: fraudReason,
+    department_mismatch: true,
+  };
+}
+
+/**
  * Main Priority Engine: Combines all signals into final priority with department routing
  */
 export function calculatePriority(input: PrioritizationInput): PrioritizationOutput {
@@ -979,31 +1142,87 @@ export function calculatePriority(input: PrioritizationInput): PrioritizationOut
   baseScore = baseScore * classificationConfidence;
   console.log(`   Score after confidence: ${baseScore.toFixed(1)}`);
 
+  // 8️⃣ Detect Department Mismatch Fraud
+  console.log(`\n📊 STEP 6: Check for Department Mismatch Fraud`);
+  const fraudDetection = detectDepartmentMismatchFraud(
+    category,
+    input.user_selected_departments,
+    classificationConfidence
+  );
+  
+  let fraudPenalty = 1.0; // Multiplier: 1.0 = no penalty
+  
+  // AGGRESSIVE FRAUD PENALTIES
+  if (fraudDetection.fraud_score >= 0.85) {
+    // CRITICAL fraud: Destroy the score
+    fraudPenalty = 0.15; // Reduce by 85% - drops even 100pt score to ~15pt
+    console.log(`\n🚨 CRITICAL FRAUD DETECTED - Applying 85% penalty (0.15x multiplier)`);
+    console.log(`   Reason: ${fraudDetection.fraud_reason}`);
+    baseScore = baseScore * fraudPenalty;
+  } else if (fraudDetection.fraud_score >= 0.70) {
+    // High fraud: Strong penalty
+    fraudPenalty = 0.25; // Reduce by 75%
+    console.log(`\n🚨 HIGH FRAUD DETECTED - Applying 75% penalty (0.25x multiplier)`);
+    console.log(`   Reason: ${fraudDetection.fraud_reason}`);
+    baseScore = baseScore * fraudPenalty;
+  } else if (fraudDetection.fraud_score >= 0.55) {
+    // Medium fraud: Moderate penalty
+    fraudPenalty = 0.4; // Reduce by 60%
+    console.log(`\n⚠️ MEDIUM FRAUD DETECTED - Applying 60% penalty (0.4x multiplier)`);
+    console.log(`   Reason: ${fraudDetection.fraud_reason}`);
+    baseScore = baseScore * fraudPenalty;
+  } else if (fraudDetection.fraud_score >= 0.35) {
+    // Mild fraud: Light penalty
+    fraudPenalty = 0.55; // Reduce by 45%
+    console.log(`\n⚡ MILD FRAUD DETECTED - Applying 45% penalty (0.55x multiplier)`);
+    console.log(`   Reason: ${fraudDetection.fraud_reason}`);
+    baseScore = baseScore * fraudPenalty;
+  }
+  console.log(`   Score after fraud check: ${baseScore.toFixed(1)}`);
+
   // Cap at 100
   baseScore = Math.min(Math.max(baseScore, 0), 100);
   console.log(`   Score capped at 0-100: ${baseScore.toFixed(1)}`);
 
-  // Determine priority level
+  // Determine priority level - Even stricter thresholds if fraud score is high
   let priorityLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   let urgencySeconds: number;
 
-  if (baseScore >= 80) {
-    priorityLevel = "CRITICAL";
-    urgencySeconds = 60; // 1 minute
-  } else if (baseScore >= 60) {
-    priorityLevel = "HIGH";
-    urgencySeconds = 300; // 5 minutes
-  } else if (baseScore >= 40) {
-    priorityLevel = "MEDIUM";
-    urgencySeconds = 900; // 15 minutes
+  // If any fraud detected, cap priority at MEDIUM max (even if score is high)
+  if (fraudDetection.fraud_score >= 0.35) {
+    // Fraud detected - hard cap at MEDIUM
+    if (baseScore >= 50) {
+      priorityLevel = "MEDIUM";
+      urgencySeconds = 900; // 15 minutes 
+    } else if (baseScore >= 30) {
+      priorityLevel = "MEDIUM";
+      urgencySeconds = 900;
+    } else {
+      priorityLevel = "LOW";
+      urgencySeconds = 3600; // 1 hour
+    }
   } else {
-    priorityLevel = "LOW";
-    urgencySeconds = 3600; // 1 hour
+    // No fraud - use normal thresholds
+    if (baseScore >= 80) {
+      priorityLevel = "CRITICAL";
+      urgencySeconds = 60; // 1 minute
+    } else if (baseScore >= 60) {
+      priorityLevel = "HIGH";
+      urgencySeconds = 300; // 5 minutes
+    } else if (baseScore >= 40) {
+      priorityLevel = "MEDIUM";
+      urgencySeconds = 900; // 15 minutes
+    } else {
+      priorityLevel = "LOW";
+      urgencySeconds = 3600; // 1 hour
+    }
   }
 
   console.log(`\n✅ FINAL RESULT:`);
   console.log(`   Priority Score: ${Math.round(baseScore)}/100`);
   console.log(`   Priority Level: ${priorityLevel}`);
+  console.log(`   Fraud Detected: ${fraudDetection.department_mismatch}`);
+  console.log(`   Fraud Score: ${fraudDetection.fraud_score.toFixed(2)}/1.0`);
   console.log(`   Response Time: ${urgencySeconds}s`);
   console.log(`${"=".repeat(60)}\n`);
 
@@ -1015,6 +1234,10 @@ export function calculatePriority(input: PrioritizationInput): PrioritizationOut
     department_confidence: categoryBaseScore,
     recommendation: getRecommendation(priorityLevel, category, department_priority, input),
     estimated_urgency_seconds: urgencySeconds,
+    fraud_score: fraudDetection.fraud_score,
+    fraud_flag: fraudDetection.fraud_flag,
+    fraud_reason: fraudDetection.fraud_reason,
+    department_mismatch: fraudDetection.department_mismatch,
   };
 }
 
@@ -1070,12 +1293,59 @@ export async function processSubmission(
     }
   }
 
+  // ✅ EARLY FRAUD SIGNAL: Detect category mismatch immediately
+  console.log(`\n🚨 EARLY STAGE: Checking for category mismatch...`);
+  const { category: aiDetectedCategory, confidence: earlyConfidence } = classifyEmergencyCategory(
+    finalTextDescription,
+    []
+  );
+  console.log(`   AI Detected Category: ${aiDetectedCategory} (${(earlyConfidence * 100).toFixed(0)}% confidence)`);
+  console.log(`   User Selected Departments: ${request.user_selected_departments?.join(", ") || "none"}`);
+  
+  let mismatchPenalty = 0; // 0-1 value to add to fake_score if mismatch detected
+  
+  if (
+    request.user_selected_departments && 
+    request.user_selected_departments.length > 0 &&
+    earlyConfidence >= 0.50
+  ) {
+    const categoryToUserDept: Record<EmergencyCategory, 'hospital' | 'fire' | 'police' | 'municipal corporation'> = {
+      Hospital: 'hospital',
+      Fire: 'fire',
+      Police: 'police',
+      Municipal: 'municipal corporation',
+    };
+    
+    const expectedDept = categoryToUserDept[aiDetectedCategory];
+    const userSelected = request.user_selected_departments[0];
+    const isMismatch = expectedDept !== userSelected;
+    
+    if (isMismatch) {
+      console.log(`   🚨 MISMATCH DETECTED: AI confident ${aiDetectedCategory} vs user selected ${userSelected}`);
+      // Apply penalty based on AI confidence
+      if (earlyConfidence >= 0.60) {
+        mismatchPenalty = 0.65; // Very high penalty for high confidence mismatch
+        console.log(`   📊 Credibility penalty: +0.65 (HIGH confidence mismatch)`);
+      } else if (earlyConfidence >= 0.50) {
+        mismatchPenalty = 0.45; // Moderate penalty for moderate confidence mismatch
+        console.log(`   📊 Credibility penalty: +0.45 (MODERATE confidence mismatch)`);
+      }
+    }
+  }
+
   // Step 1: Fake Detection
-  console.log("📸 Detecting image deepfakes...");
+  console.log("\n📸 Detecting image deepfakes...");
   const imageFakeScore = await detectImageFake(request.image);
 
   console.log("📝 Detecting text spam/AI-generated...");
-  const textFakeScore = await detectTextFake(finalTextDescription);
+  let textFakeScore = await detectTextFake(finalTextDescription);
+  
+  // ✅ APPLY MISMATCH PENALTY TO TEXT CREDIBILITY
+  if (mismatchPenalty > 0) {
+    console.log(`   📊 Original text fake score: ${textFakeScore.toFixed(3)}`);
+    textFakeScore = Math.min(textFakeScore + mismatchPenalty, 1.0); // Can't exceed 1.0
+    console.log(`   📊 ADJUSTED text fake score (fraud penalty): ${textFakeScore.toFixed(3)}`);
+  }
 
   // Step 2: Image-Text Consistency
   console.log("🧠 Matching image with text description (CLIP)...");
@@ -1149,6 +1419,7 @@ export async function processSubmission(
       text_credibility: 1 - textFakeScore,
       image_text_match: clipSimilarity,
       detected_hazards: detectedObjects,
+      user_selected_departments: request.user_selected_departments,
     };
 
     console.log(`\n[processSubmission] Priority Input:`);

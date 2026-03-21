@@ -21,6 +21,9 @@ export interface PrioritizationInput {
   text_credibility: number;
   image_text_match: number;
   detected_hazards: string[];
+  user_selected_departments?: ('hospital' | 'fire' | 'police' | 'municipal corporation')[];
+  ai_detected_category?: 'Hospital' | 'Fire' | 'Municipal' | 'Police';
+  classification_confidence?: number;
 }
 
 export interface PrioritizationOutput {
@@ -31,6 +34,10 @@ export interface PrioritizationOutput {
   department: "Hospital" | "Fire" | "Municipal" | "Police"; // Routing department
   department_priority: string; // Category-specific priority
   department_confidence: number; // Base confidence for this department (0.98 Hospital, 0.87 Fire, etc.)
+  fraud_score?: number; // 0-1, probability of fraud/mismatch
+  fraud_flag?: boolean; // True if potential fraud detected
+  fraud_reason?: string; // Explanation of fraud detection
+  department_mismatch?: boolean; // True if user-selected department doesn't match AI detection
 }
 
 export interface SubmissionRequest {
@@ -43,6 +50,7 @@ export interface SubmissionRequest {
     lat: number;
     lng: number;
   };
+  user_selected_departments?: ('hospital' | 'fire' | 'police' | 'municipal corporation')[];
 }
 
 export interface FinalResponse extends VerificationResult {
