@@ -41,8 +41,8 @@ export function Navbar() {
                 </div>
               </div>
               <div className="flex flex-col">
-                <span className="font-bold text-lg text-slate-900 leading-tight">XSpark CRM</span>
-                <span className="text-[10px] text-slate-500 leading-tight">Event Management</span>
+                <span className="font-bold text-lg text-slate-900 leading-tight">XORcists</span>
+                <span className="text-[10px] text-slate-500 font-medium leading-none">Civic Platform</span>
               </div>
             </Link>
           </div>

@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
     root: projectRoot,
   },
   
+  // Enable HTTPS for local dev (required for service workers on non-localhost)
+  experimental: {
+    serverActions: {},
+  },
+
   // Ensure PWA files are properly served
   async headers() {
     return [

@@ -1,6 +1,6 @@
 'use client';
 
-import { WifiOff, RefreshCw, Home } from 'lucide-react';
+import { WifiOff, RefreshCw, Home, ClipboardList } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -87,6 +87,16 @@ export default function OfflinePage() {
 
         {/* Actions */}
         <div className="space-y-3">
+          {!isOnline && (
+            <button
+              onClick={() => router.push('/tab')}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+            >
+              <ClipboardList size={20} />
+              Fill Lead Form Offline
+            </button>
+          )}
+
           <button
             onClick={handleRetry}
             disabled={isOnline}
@@ -110,9 +120,9 @@ export default function OfflinePage() {
           <div className="mt-8 p-4 bg-blue-50 rounded-lg text-left">
             <h3 className="font-semibold text-blue-900 mb-2">💡 Tips:</h3>
             <ul className="text-sm text-blue-800 space-y-1">
+              <li>• You can still fill the Lead Form offline</li>
+              <li>• Data will auto-sync when you&apos;re back online</li>
               <li>• Check your WiFi or mobile data connection</li>
-              <li>• Try turning airplane mode off</li>
-              <li>• Some features may work offline</li>
             </ul>
           </div>
         )}

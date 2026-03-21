@@ -16,13 +16,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "XSpark CRM - Lead Management System",
+  title: "XORcists - Civic Request Platform",
   description: "Streamlined lead management for events and sales - works offline",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "XSpark CRM",
+    title: "XORcists",
   },
   formatDetection: {
     telephone: false,

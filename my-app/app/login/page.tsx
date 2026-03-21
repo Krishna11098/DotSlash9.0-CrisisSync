@@ -52,7 +52,7 @@ export default function LoginPage() {
                         <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
                             <span className="text-white font-bold text-2xl">XS</span>
                         </div>
-                        <h1 className="text-3xl font-bold text-gray-900">XSpark CRM</h1>
+                        <h1 className="text-3xl font-bold text-gray-900">XORcists</h1>
                         <p className="text-gray-600 mt-2">Lead Management System</p>
                     </div>
 

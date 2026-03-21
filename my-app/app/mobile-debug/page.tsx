@@ -82,7 +82,7 @@ export default function MobileDebugPage() {
             <h3 className="font-bold text-blue-900 mb-2">📱 TO FIX CACHING ON MOBILE:</h3>
             <ol className="text-sm text-blue-800 space-y-2">
               <li><strong>1.</strong> Service Worker needs to register - refresh this page</li>
-              <li><strong>2.</strong> Visit /staff, /admin, /login pages (builds cache)</li>
+              <li><strong>2.</strong> Visit /admin, /login pages (builds cache)</li>
               <li><strong>3.</strong> Check status here again - caches should appear</li>
               <li><strong>4.</strong> Turn on Airplane Mode and test</li>
             </ol>
@@ -107,13 +107,7 @@ export default function MobileDebugPage() {
             >
               🔄 Refresh & Recheck
             </button>
-            
-            <button
-              onClick={() => router.push('/staff')}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg"
-            >
-              📝 Visit Staff Page (Build Cache)
-            </button>
+
             
             <button
               onClick={() => router.push('/pwa-test')}

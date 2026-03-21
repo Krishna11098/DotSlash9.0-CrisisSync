@@ -19,7 +19,7 @@ function getLocalIPAddresses() {
   return addresses;
 }
 
-console.log('\n🚀 XSpark CRM Server Starting...\n');
+console.log('\n🚀 XORcists Server Starting...\n');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 console.log('📱 TEST ON YOUR PHONE - USE THESE URLs:\n');
 
