@@ -1,8 +1,15 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: true,
+  turbopack: {
+    root: projectRoot,
+  },
   
   // Ensure PWA files are properly served
   async headers() {
