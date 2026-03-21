@@ -9,6 +9,7 @@ import { uploadAudioBlobToCloudinary } from '@/lib/audio-storage'
 import { saveAudioBlobLocally } from '@/lib/audio-storage'
 import ProtectedLayout from '@/app/components/ProtectedLayout'
 import SyncStatusIndicator from '@/app/components/SyncStatusIndicator'
+import { submitRequestWithPriority } from '@/app/actions/submitRequest'
 import {
   AlertCircle,
   CheckCircle,
@@ -292,54 +293,145 @@ export default function CitizenDashboard() {
     setMessage({ text: '', type: '' })
 
     try {
-      let imageUrl = null
-      let audioUrl = null
+      // ================================================================
+      // PREPARE DATA FOR SUBMISSION
+      // ================================================================
+      console.log('[submit] 📋 Preparing submission data...')
+      
+      // Use base64 images/audio directly (don't upload to cloud)
+      const imageData = imagePreview || '' // base64
+      let audioData = ''
+      
+      if (audioBlob && isOnline) {
+        // Convert audio blob to base64
+        const reader = new FileReader()
+        audioData = await new Promise((resolve) => {
+          reader.onload = () => resolve(reader.result as string)
+          reader.readAsDataURL(audioBlob)
+        })
+      }
 
-      if (isOnline) {
-        if (imageFile) {
-          try {
-            console.log('[submit] Uploading image...')
-            imageUrl = await uploadImageToCloudinary(imageFile)
-            console.log('[submit] Image uploaded:', imageUrl)
-          } catch (uploadErr) {
-            console.warn('[submit] Image upload failed, saving base64 instead:', uploadErr)
-            imageUrl = imagePreview // fallback to base64
+      const coordinates = latitude && longitude ? { lat: latitude, lng: longitude } : undefined
+
+      console.log('[submit] 📋 Data prepared:')
+      console.log(`   - Image: ${imageData.substring(0, 50)}...`)
+      console.log(`   - Text: "${topic.substring(0, 50)}..."`)
+      console.log(`   - Audio: ${audioData ? 'present' : 'none'}`)
+      console.log(`   - Departments: [${departments.join(', ')}]`)
+      console.log(`   - Coordinates: ${coordinates ? 'captured' : 'none'}`)
+
+      // ================================================================
+      // CALL SERVER ACTION FOR PRIORITY CALCULATION & ROUTING
+      // ================================================================
+      if (isOnline && imageData) {
+        console.log('[submit] 🚀 Online - calling server action for priority calculation...')
+        
+        try {
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+          
+          if (sessionError || !session?.access_token) {
+            throw new Error('Authentication required')
           }
-        }
-        if (audioBlob) {
-          try {
-            console.log('[submit] Uploading audio...')
-            audioUrl = await uploadAudioBlobToCloudinary(audioBlob, 'auth-req-audio.webm')
-            console.log('[submit] Audio uploaded:', audioUrl)
-          } catch (uploadErr) {
-            console.warn('[submit] Audio upload failed, saving locally:', uploadErr)
-            const { offlineAudioRef } = await saveAudioBlobLocally(audioBlob, 'auth-req-audio.webm')
-            audioUrl = offlineAudioRef
+
+          console.log('[submit] 🔐 Got session token, calling submitRequestWithPriority...')
+          console.log(`[submit] 🔑 Token: ${session.access_token.substring(0, 20)}...`)
+          
+          // Call server action with form data AND session token
+          const result = await submitRequestWithPriority(
+            {
+              image: imageData,
+              text_description: topic,
+              audio: audioData,
+              location: '',
+              departments,
+              report_count: 1,
+              coordinates,
+            },
+            session.access_token
+          )
+
+          console.log('[submit] 📦 Server action response:', result)
+
+          if (!result.success) {
+            if (result.status === 200) {
+              // Priority too low - discarded but not an error
+              setMessage({
+                text: result.message || 'This report does not meet the priority threshold.',
+                type: 'warning'
+              })
+              setTopic('')
+              setDepartments([])
+              setTimeLimit('')
+              setImageFile(null)
+              setImagePreview(null)
+              setAudioBlob(null)
+              setLoading(false)
+              return
+            }
+            
+            throw new Error(result.error || 'Failed to process request')
           }
-        }
-      } else {
-        if (imagePreview) imageUrl = imagePreview
-        if (audioBlob) {
-          const { offlineAudioRef } = await saveAudioBlobLocally(audioBlob, 'auth-req-audio.webm')
-          audioUrl = offlineAudioRef
+
+          // Success!
+          console.log('[submit] ✅ Request submitted successfully!')
+          const data = result.data as any
+          if (data) {
+            console.log(`   - Request ID: ${data.request_id}`)
+            console.log(`   - Priority: ${data.priority_score}/100`)
+            console.log(`   - Urgency: ${data.urgency}`)
+            console.log(`   - Assignments: ${data.assignments_created}`)
+
+            setMessage({
+              text: `✅ Request submitted! Priority: ${data.priority_score}/100 (${data.urgency}) - Forwarded to ${data.assignments_created} employee(s)`,
+              type: 'success'
+            })
+          }
+
+          // Reset form
+          setTopic('')
+          setDepartments([])
+          setTimeLimit('')
+          setLatitude(null)
+          setLongitude(null)
+          setImageFile(null)
+          setImagePreview(null)
+          setAudioBlob(null)
+          setLoading(false)
+          return // Early exit on success
+        } catch (err) {
+          console.warn('[submit] ❌ Server action failed:', err)
+          console.log('[submit] Falling back to offline save...')
+          // Continue to offline fallback
         }
       }
 
-      console.log('[submit] Saving request offline...')
-      await saveRequestOffline({
-        topic: topic || '',
-        departments,
-        urgency,
-        time_limit_minutes: timeLimit ? parseInt(timeLimit) : null,
-        latitude,
-        longitude,
-        image_url: imageUrl,
-        audio_url: audioUrl,
-        status: 'pending',
-      })
-      console.log('[submit] Request saved successfully')
+      // ================================================================
+      // FALLBACK: OFFLINE SAVE
+      // ================================================================
+      console.log('[submit] 💾 Using offline save fallback...')
+      
+      if (imageData || topic || audioData) {
+        // Save locally for later sync
+        await saveRequestOffline({
+          topic: topic || '',
+          departments,
+          urgency,
+          time_limit_minutes: timeLimit ? parseInt(timeLimit) : null,
+          latitude,
+          longitude,
+          image_url: imageData,
+          audio_url: audioData,
+          status: 'pending',
+        })
+        
+        console.log('[submit] ✅ Request saved offline')
+        setMessage({
+          text: 'Request saved offline. It will sync when you reconnect and calculate priority.',
+          type: 'info'
+        })
+      }
 
-      setMessage({ text: isOnline ? 'Request submitted successfully!' : 'Request saved offline. It will sync when you reconnect.', type: 'success' })
+      // Reset form
       setTopic('')
       setDepartments([])
       setTimeLimit('')
@@ -349,8 +441,11 @@ export default function CitizenDashboard() {
       setImagePreview(null)
       setAudioBlob(null)
     } catch (err: any) {
-      console.error('[submit] Error:', err)
-      setMessage({ text: err.message || 'Failed to submit request', type: 'error' })
+      console.error('[submit] ❌ Error:', err)
+      setMessage({
+        text: err.message || 'Failed to submit request',
+        type: 'error'
+      })
     } finally {
       setLoading(false)
     }

@@ -14,11 +14,24 @@ import { FinalResponse } from "@/lib/report-types";
  * 5. If priority >= 20: Save to DB + route to gov employees
  */
 export async function POST(request: NextRequest) {
+  console.log("\n\n" + "=".repeat(80));
+  console.log("🚀🚀🚀 [submit-request] POST ENDPOINT HIT");
+  console.log("=".repeat(80));
+
   try {
-    const body = await request.json();
+    console.log("📥 [POST] Parsing request body...");
+    let body;
+    try {
+      body = await request.json();
+      console.log("✅ [POST] Body parsed successfully");
+    } catch (parseError) {
+      console.error("❌ [POST] JSON parse error:", parseError);
+      throw parseError;
+    }
 
     // Validate required fields
     if (!body.image) {
+      console.error("❌ [POST] Image is required");
       return NextResponse.json(
         { error: "Image is required" },
         { status: 400 }
@@ -68,16 +81,34 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     // STEP 1: Run verification pipeline
     // ========================================================================
-    const verificationResult = await processSubmission({
-      image: body.image,
-      text_description: body.text_description || "",
-      audio: body.audio,
-      location: body.location || "",
-      report_count: body.report_count || 1,
-      coordinates: body.coordinates,
-    });
+    console.log("\n📍 STEP 1: Calling processSubmission()...");
+    console.log("   Input to pipeline:");
+    console.log(`     - image length: ${body.image?.length || 0}`);
+    console.log(`     - text: "${(body.text_description || "").substring(0, 50)}..."`);
+    console.log(`     - audio: ${body.audio ? "present" : "NONE"}`);
+    console.log(`     - location: "${body.location || "NONE"}"`);
 
+    let verificationResult;
+    try {
+      console.log("   ⏳ Awaiting processSubmission()...");
+      verificationResult = await processSubmission({
+        image: body.image,
+        text_description: body.text_description || "",
+        audio: body.audio,
+        location: body.location || "",
+        report_count: body.report_count || 1,
+        coordinates: body.coordinates,
+      });
+      console.log("✅ processSubmission() returned successfully");
+    } catch (pipelineError) {
+      console.error("❌ processSubmission() threw error:", pipelineError);
+      console.error("   Error message:", pipelineError instanceof Error ? pipelineError.message : pipelineError);
+      throw pipelineError;
+    }
+
+    console.log("📦 Extracting priority from result...");
     const priorityScore = verificationResult.priority.priority_score;
+    console.log(`✅ Priority score extracted: ${priorityScore} (type: ${typeof priorityScore})`);
     console.log(`\n✅ [submit-request] Verification Complete:`);
     console.log(`📊 Priority score: ${priorityScore}`);
     console.log(`📊 Priority level: ${verificationResult.priority.priority_level}`);
@@ -283,11 +314,20 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("❌ [submit-request] Unexpected error:", error);
+    console.error("\n" + "=".repeat(80));
+    console.error("❌❌❌ [submit-request] FATAL ERROR CAUGHT");
+    console.error("=".repeat(80));
+    console.error("Error type:", error?.constructor?.name);
+    console.error("Error message:", error instanceof Error ? error.message : String(error));
+    console.error("Error stack:", error instanceof Error ? error.stack : "N/A");
+    console.error("Full error object:", error);
+    console.error("=".repeat(80));
+
     return NextResponse.json(
       {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
+        errorType: error?.constructor?.name,
         status: "error",
       },
       { status: 500 }

@@ -50,15 +50,26 @@ export const saveRequestOffline = async (request: Partial<OfflineRequest>): Prom
 }
 
 export const syncRequests = async (): Promise<void> => {
-  if (!isBrowserOnline()) return
-  if (activeSync) return activeSync
+  if (!isBrowserOnline()) {
+    console.log("[offline-sync] Not online, skipping sync");
+    return;
+  }
+  if (activeSync) {
+    console.log("[offline-sync] Already syncing, skipping");
+    return activeSync;
+  }
 
+  console.log("[offline-sync] Starting sync...");
   activeSync = (async () => {
     try {
       const pendingRequests = await offlineDb.requests.where('sync_status').equals('pending').toArray()
+      console.log(`[offline-sync] Found ${pendingRequests.length} pending requests to sync`);
       
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return // Can't sync if not logged in
+      if (!user) {
+        console.log("[offline-sync] No user, cannot sync");
+        return;
+      }
 
       for (const request of pendingRequests) {
         // Discard logic for urgent/emergency
@@ -109,7 +120,9 @@ export const syncRequests = async (): Promise<void> => {
           urgency: request.urgency,
           time_limit_minutes: request.time_limit_minutes,
           status: 'pending',
-          client_created_at: request.client_created_at
+          client_created_at: request.client_created_at,
+          // IMPORTANT: Include priority_number if available, default to 0 only as fallback
+          priority_number: (request as any).priority_number || 0,
         }
 
         const { error } = await supabase.from('requests').insert(payload)
@@ -139,6 +152,7 @@ export const syncRequests = async (): Promise<void> => {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
+    console.log("[offline-sync] Browser came online, syncing pending requests...");
     syncRequests()
   })
 

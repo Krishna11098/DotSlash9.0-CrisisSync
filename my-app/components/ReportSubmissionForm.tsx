@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { VerificationResult, PrioritizationOutput, FinalResponse } from "@/lib/report-types";
+import { supabase } from "@/lib/supabase";
 
 interface SubmissionState {
   loading: boolean;
@@ -209,12 +210,42 @@ export function ReportSubmissionForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Log to both console AND sessionStorage for debugging
+    const log = (msg: string) => {
+      console.log(msg);
+      if (typeof window !== 'undefined') {
+        const logs = JSON.parse(sessionStorage.getItem('formLogs') || '[]');
+        logs.push(`[${new Date().toISOString()}] ${msg}`);
+        sessionStorage.setItem('formLogs', JSON.stringify(logs));
+      }
+    };
+
+    log("\n📋 [handleSubmit] ========== FORM SUBMIT STARTED ==========");
     setState({ loading: true, submitted: false });
 
     try {
+      log("🔐 [handleSubmit] Getting session token...");
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session?.access_token) {
+        log("❌ [handleSubmit] Session error: " + JSON.stringify(sessionError));
+        throw new Error("Authentication required. Please log in first.");
+      }
+      
+      log("✅ [handleSubmit] Got session token");
+      log(`🚀 [handleSubmit] Sending to /api/submit-request with auth header`);
+      log(`   - departments: [${formData.departments.join(", ")}]`);
+      log(`   - image size: ${formData.image.length} characters`);
+      log(`   - text: "${(formData.text_description || "").substring(0, 50)}..."`);
+
+      log("⏳ [handleSubmit] About to call fetch()...");
       const response = await fetch("/api/submit-request", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           ...formData,
           // Map department UI names to database values
@@ -224,12 +255,16 @@ export function ReportSubmissionForm() {
         }),
       });
 
+      log(`📨 [handleSubmit] GOT RESPONSE - Status: ${response.status}`);
       const apiResult = await response.json();
+      log(`📦 [handleSubmit] Response body: ${JSON.stringify(apiResult).substring(0, 200)}...`);
 
       if (!response.ok) {
+        log("❌ [handleSubmit] API error response: " + JSON.stringify(apiResult));
         throw new Error(apiResult.error || "Failed to process report");
       }
 
+      log("✅ [handleSubmit] SUCCESS - Form processed");
       setState({
         loading: false,
         submitted: true,
@@ -248,6 +283,8 @@ export function ReportSubmissionForm() {
       setAudioTranscription("");
       setRecordingTime(0);
     } catch (error) {
+      log("❌ [handleSubmit] EXCEPTION CAUGHT: " + (error instanceof Error ? error.message : String(error)));
+      log("Stack: " + (error instanceof Error ? error.stack : "N/A"));
       setState({
         loading: false,
         submitted: false,
@@ -259,6 +296,19 @@ export function ReportSubmissionForm() {
   if (state.submitted && state.result) {
     return <ResultScreen result={state.result} onReset={() => setState({ loading: false, submitted: false })} />;
   }
+
+  // Debug console to show form execution logs
+  const showDebugConsole = () => {
+    if (typeof window !== 'undefined') {
+      const logs = JSON.parse(sessionStorage.getItem('formLogs') || '[]');
+      console.log("\n" + "=".repeat(80));
+      console.log("🔍 FORM EXECUTION LOGS:");
+      console.log("=".repeat(80));
+      logs.forEach((log: string) => console.log(log));
+      console.log("=".repeat(80) + "\n");
+      alert(`Logs recorded: ${logs.length} entries\n\nCheck browser console for details.\n\nFirst few logs:\n${logs.slice(0, 5).join('\n')}`);
+    }
+  };
 
   if (!hydrated) {
     return null;
@@ -523,6 +573,15 @@ export function ReportSubmissionForm() {
           }`}
         >
           {state.loading ? "🔄 Processing..." : "🚀 Submit Report"}
+        </button>
+
+        {/* Debug Button */}
+        <button
+          type="button"
+          onClick={showDebugConsole}
+          className="w-full mt-2 py-2 px-3 rounded-lg font-semibold text-xs text-white bg-purple-600 hover:bg-purple-700 transition-colors"
+        >
+          🐛 View Debug Logs
         </button>
       </form>
 
