@@ -147,12 +147,9 @@ export default function GovEmployeeDashboard() {
 
       if (error) throw error
 
-      // Update local state
-      setRequests(
-        requests.map(req =>
-          req.request_id === requestId ? { ...req, status: 'acknowledged' } : req
-        )
-      )
+      // Remove from list after accepting (card disappears from dashboard)
+      setRequests(requests.filter(req => req.request_id !== requestId))
+      setSelectedRequest(null)
 
       setMessage({ text: '✅ Request accepted! You can now take action.', type: 'success' })
     } catch (err: any) {
