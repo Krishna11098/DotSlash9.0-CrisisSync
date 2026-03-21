@@ -141,7 +141,7 @@ export default function GovEmployeeDashboard() {
 
       const { error } = await supabase
         .from('request_assignments')
-        .update({ status: 'accepted' })
+        .update({ status: 'acknowledged' })
         .eq('request_id', requestId)
         .eq('assigned_to_user_id', user?.id)
 
@@ -150,7 +150,7 @@ export default function GovEmployeeDashboard() {
       // Update local state
       setRequests(
         requests.map(req =>
-          req.request_id === requestId ? { ...req, status: 'accepted' } : req
+          req.request_id === requestId ? { ...req, status: 'acknowledged' } : req
         )
       )
 
@@ -168,9 +168,10 @@ export default function GovEmployeeDashboard() {
       setActionLoading(true)
       console.log('❌ Rejecting request:', requestId)
 
+      // Delete the assignment instead of updating status (no 'rejected' status exists)
       const { error } = await supabase
         .from('request_assignments')
-        .update({ status: 'rejected' })
+        .delete()
         .eq('request_id', requestId)
         .eq('assigned_to_user_id', user?.id)
 
@@ -445,15 +446,15 @@ export default function GovEmployeeDashboard() {
                   <div className="flex gap-3 pt-6 border-t border-slate-200">
                     <button
                       onClick={() => selectedRequest.request?.id && handleAcceptRequest(selectedRequest.request.id)}
-                      disabled={actionLoading || selectedRequest.status === 'accepted' || !selectedRequest.request?.id}
+                      disabled={actionLoading || selectedRequest.status === 'acknowledged' || !selectedRequest.request?.id}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Check size={18} />
-                      {selectedRequest.status === 'accepted' ? 'Already Accepted' : 'Accept Request'}
+                      {selectedRequest.status === 'acknowledged' ? 'Already Accepted' : 'Accept Request'}
                     </button>
                     <button
                       onClick={() => selectedRequest.request?.id && handleRejectRequest(selectedRequest.request.id)}
-                      disabled={actionLoading || selectedRequest.status === 'rejected' || !selectedRequest.request?.id}
+                      disabled={actionLoading || !selectedRequest.request?.id}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <X size={18} />

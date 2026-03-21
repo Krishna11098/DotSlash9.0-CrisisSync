@@ -264,6 +264,8 @@ export async function POST(request: NextRequest) {
             distance_km: emp.distance,
           }));
 
+          console.log(`📝 [submit-request] Creating ${assignmentsToCreate.length} assignments:`, JSON.stringify(assignmentsToCreate, null, 2));
+
           const { data: createdAssignments, error: assignmentError } = await supabase
             .from("request_assignments")
             .insert(assignmentsToCreate)
@@ -271,6 +273,12 @@ export async function POST(request: NextRequest) {
 
           if (assignmentError) {
             console.error(`❌ [submit-request] Assignment error for ${department}:`, assignmentError);
+            console.error(`🔴 Full error object:`, JSON.stringify(assignmentError, null, 2));
+            continue;
+          }
+          
+          if (!createdAssignments || createdAssignments.length === 0) {
+            console.warn(`⚠️ [submit-request] Insert succeeded but no rows returned for ${department}`);
             continue;
           }
 
