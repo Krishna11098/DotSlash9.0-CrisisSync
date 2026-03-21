@@ -1,20 +1,8 @@
 import { offlineDb } from '@/lib/offline-db'
 
 const OFFLINE_AUDIO_PREFIX = 'offline-audio://'
-const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || ''
-const CLOUDINARY_UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || ''
-const CLOUDINARY_API_KEY = process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY || ''
-const CLOUDINARY_API_SECRET = process.env.NEXT_PUBLIC_CLOUDINARY_API_SECRET || ''
 
 const nowIso = () => new Date().toISOString()
-
-const toSha1Hex = async (input: string) => {
-  const encoder = new TextEncoder()
-  const bytes = encoder.encode(input)
-  const hashBuffer = await crypto.subtle.digest('SHA-1', bytes)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map((byte) => byte.toString(16).padStart(2, '0')).join('')
-}
 
 const createOfflineAudioId = () => {
   const generated =
@@ -74,44 +62,29 @@ export const getAudioBlobByRef = async (audioRefOrId: string | null | undefined)
   return record?.blob || null
 }
 
+/**
+ * Upload an audio blob to Cloudinary via the server-side API route.
+ * This keeps API keys secure on the server.
+ */
 export const uploadAudioBlobToCloudinary = async (blob: Blob, fileName?: string): Promise<string> => {
-  if (!CLOUDINARY_CLOUD_NAME) {
-    throw new Error('Cloudinary cloud name not configured')
-  }
+  const formData = new FormData()
+  formData.append('file', blob, fileName || 'recording.webm')
+  formData.append('folder', 'xorcists/audio')
+  formData.append('resource_type', 'auto')
 
-  const folder = 'htt_xspark/lead-audio'
-  const uploadData = new FormData()
-  uploadData.append('file', blob, fileName || 'recording.webm')
-
-  if (CLOUDINARY_UPLOAD_PRESET) {
-    uploadData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
-    uploadData.append('folder', folder)
-  } else if (CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET) {
-    const timestamp = Math.floor(Date.now() / 1000)
-    const signaturePayload = `folder=${folder}&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`
-    const signature = await toSha1Hex(signaturePayload)
-
-    uploadData.append('folder', folder)
-    uploadData.append('timestamp', String(timestamp))
-    uploadData.append('api_key', CLOUDINARY_API_KEY)
-    uploadData.append('signature', signature)
-  } else {
-    throw new Error('Cloudinary upload preset not set, and signed upload credentials are incomplete')
-  }
-
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
+  const response = await fetch('/api/upload', {
     method: 'POST',
-    body: uploadData,
+    body: formData,
   })
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown Cloudinary error')
-    throw new Error(errorText)
+    const errorData = await response.json().catch(() => ({ error: 'Upload failed' }))
+    throw new Error(errorData.error || 'Audio upload failed')
   }
 
   const data = await response.json()
   if (!data?.secure_url && !data?.url) {
-    throw new Error('Cloudinary response did not include a URL')
+    throw new Error('Upload response did not include a URL')
   }
 
   return data.secure_url || data.url

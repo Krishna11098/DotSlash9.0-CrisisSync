@@ -1,8 +1,8 @@
 {
-  "name": "XSpark CRM - Lead Management System",
-  "short_name": "XSpark CRM",
-  "description": "Streamlined lead management for events and sales - works offline",
-  "start_url": "/tab",
+  "name": "XORcists - Civic Request Platform",
+  "short_name": "XORcists",
+  "description": "Submit civic requests to government departments - works offline",
+  "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#8b5cf6",
@@ -62,8 +62,8 @@
     {
       "name": "Lead Form",
       "short_name": "Lead Form",
-      "description": "Fill the lead entry form",
-      "url": "/tab",
+      "description": "Submit a new request",
+      "url": "/dashboard",
       "icons": [
         {
           "src": "/icons/icon-96x96.png",

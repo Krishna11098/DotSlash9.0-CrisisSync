@@ -3,21 +3,20 @@
 import Link from 'next/link'
 import { Navbar } from './components/Navbar'
 import {
-  Users,
   ClipboardList,
   TrendingUp,
   Zap,
   ArrowRight,
-  CheckCircle,
   Shield,
   Smartphone,
   Clock,
-  BarChart3,
   Sparkles,
   Globe,
-  Camera,
   Wifi,
-  AudioLines
+  MapPin,
+  Mic,
+  Camera,
+  Building2,
 } from 'lucide-react'
 import { useAuth } from './contexts/AuthContext'
 import { WarpBackground } from '@/components/ui/warp-background'
@@ -28,41 +27,41 @@ export default function LandingPage() {
   const features = [
     {
       icon: ClipboardList,
-      title: 'Smart Lead Capture',
-      description: 'Intelligent forms with OCR scanning and offline support for seamless lead collection.'
+      title: 'Smart Request Submission',
+      description: 'Submit civic requests with text, images, or voice notes — even without internet.'
     },
     {
-      icon: Users,
-      title: 'Role Management',
-      description: 'Granular access control for staff, admins, and attendees with dedicated workflows.'
+      icon: Building2,
+      title: 'Multi-Department Routing',
+      description: 'Route your request to Hospital, Fire, Police, or Municipal Corporation instantly.'
     },
     {
-      icon: BarChart3,
-      title: 'Real-time Analytics',
-      description: 'Live dashboards with actionable insights to track performance and optimize conversions.'
+      icon: MapPin,
+      title: 'Location-Aware',
+      description: 'Automatic GPS location capture ensures requests reach the right jurisdiction.'
     },
     {
-      icon: AudioLines,
-      title: 'Audio Transcription',
-      description: 'Convert voice notes to text automatically with AI-powered transcription.'
+      icon: Mic,
+      title: 'Voice & Image Support',
+      description: 'Record audio descriptions or attach photos — no typing required.'
     },
     {
       icon: Wifi,
       title: 'Offline First',
-      description: 'Work seamlessly without internet. Data syncs automatically when connected.'
+      description: 'Works seamlessly without internet. Data syncs automatically when connected.'
     },
     {
       icon: Smartphone,
-      title: 'Mobile Optimized',
-      description: 'Native-like PWA experience with install support across all devices.'
+      title: 'Install as App',
+      description: 'Native-like PWA experience — install on your phone and access anytime.'
     }
   ]
 
   const stats = [
-    { value: '99.9%', label: 'Uptime', sublabel: 'Guaranteed' },
+    { value: '24/7', label: 'Available', sublabel: 'Always On' },
     { value: '<50ms', label: 'Response', sublabel: 'Time' },
     { value: '100%', label: 'Offline', sublabel: 'Ready' },
-    { value: '24/7', label: 'Support', sublabel: 'Available' }
+    { value: '4+', label: 'Departments', sublabel: 'Connected' }
   ]
 
   return (
@@ -88,20 +87,20 @@ export default function LandingPage() {
             {/* Badge */}
             <div className="inline-flex items-center space-x-2 px-4 py-2 bg-white/80 backdrop-blur-sm border border-slate-200/50 rounded-full shadow-sm">
               <Sparkles className="w-4 h-4 text-purple-600" />
-              <span className="text-sm font-medium text-slate-700">Next-Gen Lead Management Platform</span>
+              <span className="text-sm font-medium text-slate-700">Civic Request Platform by XORcists</span>
             </div>
 
             {/* Main Heading */}
             <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold text-slate-900 leading-tight tracking-tight">
-              Transform Your
+              Your Voice,
               <span className="block mt-2 text-slate-900">
-                Event Lead Capture
+                Their Action
               </span>
             </h1>
 
             {/* Subheading */}
             <p className="text-xl md:text-2xl text-slate-700 leading-relaxed max-w-3xl mx-auto">
-              Enterprise-grade CRM designed for event professionals. Capture, track, and convert leads with powerful tools that work offline and sync seamlessly.
+              Report civic issues to the right government department instantly. Works offline, captures location, and supports text, photo, and voice submissions.
             </p>
 
             {/* CTA Buttons */}
@@ -150,10 +149,10 @@ export default function LandingPage() {
               <span className="text-sm font-medium text-purple-700">Powerful Features</span>
             </div>
             <h2 className="text-4xl font-bold text-slate-900 mb-4">
-              Everything you need to succeed
+              Everything you need to be heard
             </h2>
             <p className="text-lg text-slate-600">
-              Built for modern event professionals with enterprise-grade capabilities
+              Built for citizens who want fast, reliable access to government services
             </p>
           </div>
 
@@ -184,34 +183,51 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* How It Works */}
       <section className="py-20 bg-slate-900 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">
-              Ready to transform your event lead management?
+          <div className="max-w-3xl mx-auto text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              How It Works
             </h2>
-            <p className="text-xl text-slate-300 mb-8">
-              Join teams already using XSpark CRM to capture and convert more leads.
+            <p className="text-xl text-slate-300">
+              Three simple steps to get your issue resolved
             </p>
-            {!user && (
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link
-                  href="/signup"
-                  className="group inline-flex items-center justify-center px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-xl transition-all duration-200"
-                >
-                  Start Free Trial
-                  <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </Link>
-                <Link
-                  href="/login"
-                  className="inline-flex items-center justify-center px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-all duration-200 border border-white/20"
-                >
-                  Sign In
-                </Link>
-              </div>
-            )}
           </div>
+
+          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+            {[
+              { step: '01', title: 'Describe the Issue', desc: 'Use text, photo, or voice to report your problem. Select the relevant department.' },
+              { step: '02', title: 'Share Your Location', desc: 'Tap to capture GPS coordinates so the right authorities can respond.' },
+              { step: '03', title: 'Submit & Track', desc: 'Your request is saved instantly — even offline — and synced when connected.' },
+            ].map((item, i) => (
+              <div key={i} className="text-center">
+                <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl text-white font-bold text-lg mb-4">
+                  {item.step}
+                </div>
+                <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
+                <p className="text-slate-400">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {!user && (
+            <div className="flex flex-col sm:flex-row gap-4 justify-center mt-12">
+              <Link
+                href="/signup"
+                className="group inline-flex items-center justify-center px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-xl transition-all duration-200"
+              >
+                Get Started
+                <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex items-center justify-center px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-all duration-200 border border-white/20"
+              >
+                Sign In
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 
@@ -222,20 +238,19 @@ export default function LandingPage() {
             <div className="md:col-span-2">
               <div className="flex items-center space-x-2 mb-4">
                 <div className="w-9 h-9 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">XS</span>
+                  <span className="text-white font-bold text-sm">X</span>
                 </div>
-                <span className="font-bold text-lg text-slate-900">XSpark CRM</span>
+                <span className="font-bold text-lg text-slate-900">XORcists</span>
               </div>
               <p className="text-slate-600 max-w-md">
-                Modern lead management platform designed for event professionals.
-                Capture, track, and convert leads efficiently.
+                A civic request platform that connects citizens directly with government departments. Built to work offline, designed for everyone.
               </p>
             </div>
 
             <div>
-              <h4 className="font-semibold text-slate-900 mb-4">Product</h4>
+              <h4 className="font-semibold text-slate-900 mb-4">Platform</h4>
               <ul className="space-y-2">
-                <li><Link href="/tab" className="text-slate-600 hover:text-blue-600 transition-colors">Lead Form</Link></li>
+                <li><Link href="/dashboard" className="text-slate-600 hover:text-blue-600 transition-colors">Submit Request</Link></li>
                 <li><Link href="/install" className="text-slate-600 hover:text-blue-600 transition-colors">Install App</Link></li>
               </ul>
             </div>
@@ -252,7 +267,7 @@ export default function LandingPage() {
 
           <div className="pt-8 border-t border-slate-200 flex flex-col md:flex-row justify-between items-center">
             <p className="text-slate-500 text-sm">
-              &copy; 2026 XSpark CRM. All rights reserved.
+              &copy; 2026 XORcists. All rights reserved.
             </p>
             <div className="flex items-center space-x-6 mt-4 md:mt-0">
               <span className="text-slate-500 text-sm hover:text-slate-700 cursor-pointer transition-colors">Documentation</span>

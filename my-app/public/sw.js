@@ -14,7 +14,7 @@ const STATIC_ASSETS = [
   '/',
   '/offline',
   '/login',
-  '/tab',
+  '/dashboard',
   '/admin',
   '/install',
   '/manifest.json',
@@ -120,10 +120,10 @@ self.addEventListener('fetch', (event) => {
             return cachedResponse;
           }
           
-          // Try serving the lead form page (start_url) as primary offline fallback
-          const tabResponse = await caches.match('/tab');
-          if (tabResponse) {
-            return tabResponse;
+          // Try serving the dashboard page (start_url) as primary offline fallback
+          const dashboardResponse = await caches.match('/dashboard');
+          if (dashboardResponse) {
+            return dashboardResponse;
           }
 
           // Serve offline page as secondary fallback
@@ -241,7 +241,7 @@ self.addEventListener('push', (event) => {
   console.log('[Service Worker] Push notification received');
   
   const data = event.data ? event.data.json() : {};
-  const title = data.title || 'XSpark CRM';
+  const title = data.title || 'XORcists';
   const options = {
     body: data.body || 'You have a new notification',
     icon: '/icons/icon-192x192.png',

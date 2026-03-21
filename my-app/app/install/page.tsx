@@ -1,8 +1,9 @@
 'use client';
 
-import { Download, Smartphone, CheckCircle2, Monitor, Tablet, Wifi } from 'lucide-react';
+import { Download, Smartphone, CheckCircle2, Monitor, Tablet, Wifi, ArrowLeft, Sparkles, Zap, Shield } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Navbar } from '@/app/components/Navbar';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -17,12 +18,10 @@ export default function InstallPage() {
   const [browserType, setBrowserType] = useState<'chrome' | 'safari' | 'other'>('other');
 
   useEffect(() => {
-    // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true);
     }
 
-    // Detect browser
     const userAgent = navigator.userAgent;
     if (/Safari/.test(userAgent) && !/Chrome/.test(userAgent)) {
       setBrowserType('safari');
@@ -32,15 +31,12 @@ export default function InstallPage() {
       setBrowserType('other');
     }
 
-    // Listen for install prompt
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
-
-    // Listen for successful installation
     window.addEventListener('appinstalled', () => {
       setIsInstalled(true);
       setDeferredPrompt(null);
@@ -52,183 +48,196 @@ export default function InstallPage() {
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) {
-      return;
-    }
-
+    if (!deferredPrompt) return;
     setIsInstalling(true);
-
-    // Show the install prompt
     deferredPrompt.prompt();
-
-    // Wait for the user's response
     const { outcome } = await deferredPrompt.userChoice;
-
-    if (outcome === 'accepted') {
-      setIsInstalled(true);
-    }
-
+    if (outcome === 'accepted') setIsInstalled(true);
     setDeferredPrompt(null);
     setIsInstalling(false);
   };
 
+  const benefits = [
+    {
+      icon: Wifi,
+      title: 'Works Offline',
+      description: 'Submit requests without internet. Syncs automatically when reconnected.',
+      gradient: 'from-purple-500 to-violet-600',
+      bg: 'bg-purple-50',
+    },
+    {
+      icon: Monitor,
+      title: 'Full Screen',
+      description: 'Runs like a native app — no browser UI, no distractions.',
+      gradient: 'from-blue-500 to-cyan-600',
+      bg: 'bg-blue-50',
+    },
+    {
+      icon: Tablet,
+      title: 'All Devices',
+      description: 'Install on Android, iOS, Windows, Mac — works everywhere.',
+      gradient: 'from-emerald-500 to-teal-600',
+      bg: 'bg-emerald-50',
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-linear-to-br from-purple-600 via-purple-500 to-blue-600 p-4">
-      <div className="max-w-4xl mx-auto py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-3xl shadow-xl mb-4">
-            <Smartphone size={40} className="text-purple-600" />
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      <Navbar />
+
+      {/* Hero */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-800 pt-16 pb-24">
+        {/* Decorative blobs */}
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-400/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-pink-400/20 rounded-full blur-3xl" />
+
+        <div className="relative max-w-4xl mx-auto px-4 text-center">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl mb-6 shadow-2xl">
+            <Smartphone size={36} className="text-white" />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">Install XSpark CRM</h1>
-          <p className="text-purple-100 text-lg">
-            Get the full app experience on your device
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 tracking-tight">
+            Install XORcists
+          </h1>
+          <p className="text-lg text-purple-200 max-w-lg mx-auto">
+            Get the full app experience — instant access from your home screen, offline support, and push notifications.
           </p>
         </div>
+      </section>
 
-        {/* Already Installed Card */}
+      <div className="max-w-3xl mx-auto px-4 -mt-12 relative z-10 pb-16">
+        {/* Already Installed */}
         {isInstalled && (
-          <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6">
-            <div className="text-center">
-              <CheckCircle2 size={64} className="text-green-600 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                App Already Installed! 🎉
-              </h2>
-              <p className="text-gray-600 mb-6">
-                You're running XSpark CRM in standalone mode. Look for the app icon in your applications or home screen.
-              </p>
-              <button
-                onClick={() => router.push('/')}
-                className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-xl transition-colors"
-              >
-                Go to App
-              </button>
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/80 p-8 mb-8 text-center">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 size={32} className="text-emerald-600" />
             </div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">
+              App Installed! 🎉
+            </h2>
+            <p className="text-slate-600 mb-6">
+              XORcists is running in standalone mode. Find it on your home screen or app list.
+            </p>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg shadow-purple-200"
+            >
+              Open App
+            </button>
           </div>
         )}
 
-        {/* Install Button Card */}
+        {/* Install Actions */}
         {!isInstalled && (
-          <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6">
-            {/* Chrome/Android Install */}
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/80 p-8 mb-8">
+            {/* Chrome with prompt ready */}
             {browserType === 'chrome' && deferredPrompt && (
               <div className="text-center">
-                <div className="mb-6 p-4 bg-green-50 border-2 border-green-300 rounded-xl">
-                  <h3 className="font-bold text-green-800 mb-2 text-lg">✅ Ready to Install!</h3>
-                  <p className="text-green-700 text-sm">
-                    Your browser supports PWA installation. Click below to download and install the full app!
-                  </p>
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full mb-6">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                  <span className="text-sm font-medium text-emerald-700">Ready to Install</span>
                 </div>
-                
-                <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                  Download & Install App
+
+                <h2 className="text-3xl font-bold text-slate-900 mb-3">
+                  One Tap Install
                 </h2>
-                <p className="text-gray-600 mb-8 text-lg">
-                  This will install the complete app on your device - no app store needed!
+                <p className="text-slate-600 mb-8 text-lg max-w-md mx-auto">
+                  No app store needed — install directly from your browser in seconds.
                 </p>
-                
+
                 <button
                   onClick={handleInstall}
                   disabled={isInstalling}
-                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-5 px-12 rounded-2xl text-xl transition-all shadow-2xl hover:shadow-purple-500/50 hover:scale-105 inline-flex items-center gap-4 mb-4"
+                  className="inline-flex items-center gap-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-4 px-10 rounded-2xl text-lg transition-all shadow-xl shadow-purple-200 hover:shadow-2xl hover:shadow-purple-300 hover:-translate-y-0.5 disabled:shadow-none disabled:translate-y-0"
                 >
-                  <Download size={32} />
-                  {isInstalling ? 'Installing App...' : 'INSTALL APP NOW'}
+                  <Download size={24} />
+                  {isInstalling ? 'Installing...' : 'Install App'}
                 </button>
-                
-                <p className="text-sm text-gray-500 max-w-md mx-auto">
-                  By clicking this button, you'll install XSpark CRM as a standalone app. It will appear in your apps list and home screen.
+
+                <p className="text-sm text-slate-400 mt-4 max-w-sm mx-auto">
+                  A quick install dialog will appear — just tap &quot;Install&quot; to confirm.
                 </p>
               </div>
             )}
 
-            {/* Chrome but no prompt yet */}
+            {/* Chrome without prompt */}
             {browserType === 'chrome' && !deferredPrompt && (
               <div className="text-center">
-                <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-xl">
-                  <h3 className="font-bold text-yellow-800 mb-2 text-lg">⏳ Installation Available</h3>
-                  <p className="text-yellow-700 text-sm">
-                    The install button will appear in a moment, or you can install manually using the browser menu.
-                  </p>
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-50 border border-amber-200 rounded-full mb-6">
+                  <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                  <span className="text-sm font-medium text-amber-700">Waiting for browser...</span>
                 </div>
-                
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                  How to Install This App
+
+                <h2 className="text-2xl font-bold text-slate-900 mb-3">
+                  Install Manually
                 </h2>
-                <p className="text-gray-600 mb-6">
-                  XSpark CRM can be installed as a Progressive Web App (PWA). Here's how:
+                <p className="text-slate-600 mb-8">
+                  The automatic installer is loading. You can also install manually:
                 </p>
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6 text-left max-w-2xl mx-auto">
-                  <h3 className="font-bold text-gray-900 mb-3">📱 Installation Methods:</h3>
-                  <ul className="space-y-3 text-gray-700">
-                    <li className="flex items-start gap-3">
-                      <span className="font-bold text-purple-600 min-w-30">Method 1:</span>
-                      <span>Look for the install icon (⊕ or 💾) in your browser's address bar and click it</span>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <span className="font-bold text-purple-600 min-w-30">Method 2:</span>
-                      <span>Open browser menu (⋮) → "Install app" or "Add to Home Screen"</span>
-                    </li>
-                    <li className="flex items-start gap-3">
-                      <span className="font-bold text-purple-600 min-w-30">Method 3:</span>
-                      <span>Wait a few seconds and an automatic prompt will appear</span>
-                    </li>
-                  </ul>
+
+                <div className="bg-slate-50 rounded-xl p-6 text-left max-w-lg mx-auto mb-6">
+                  <div className="space-y-4">
+                    {[
+                      { step: '1', text: 'Look for the install icon (⊕) in your address bar' },
+                      { step: '2', text: 'Or open browser menu (⋮) → "Install app"' },
+                      { step: '3', text: 'Tap "Install" to confirm' },
+                    ].map(item => (
+                      <div key={item.step} className="flex items-start gap-3">
+                        <span className="shrink-0 w-7 h-7 bg-purple-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                          {item.step}
+                        </span>
+                        <span className="text-slate-700 text-sm pt-0.5">{item.text}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+
                 <button
                   onClick={() => window.location.reload()}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                  className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg transition-colors text-sm"
                 >
-                  🔄 Refresh to Try Again
+                  🔄 Refresh Page
                 </button>
               </div>
             )}
 
-            {/* iOS Safari Instructions */}
+            {/* Safari (iOS) */}
             {browserType === 'safari' && (
               <div>
-                <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl text-center">
-                  <h3 className="font-bold text-blue-800 mb-2 text-lg">🍎 iOS Device Detected</h3>
-                  <p className="text-blue-700 text-sm">
-                    iOS requires manual installation via Safari. Follow the steps below.
-                  </p>
+                <div className="text-center mb-8">
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-50 border border-blue-200 rounded-full mb-6">
+                    <span className="text-sm">🍎</span>
+                    <span className="text-sm font-medium text-blue-700">iOS Detected</span>
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">
+                    Install on iPhone/iPad
+                  </h2>
+                  <p className="text-slate-600">Follow these quick steps to add to your home screen</p>
                 </div>
-                
-                <h2 className="text-2xl font-bold text-gray-900 mb-4 text-center">
-                  Install on iPhone/iPad
-                </h2>
-                <div className="bg-linear-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl p-8 mb-4">
-                  <p className="text-gray-700 font-semibold mb-6 text-center text-lg">📲 Follow These Steps:</p>
-                  <ol className="space-y-4 text-gray-700">
-                    <li className="flex items-start gap-4 bg-white p-4 rounded-lg shadow-sm">
-                      <span className="shrink-0 w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center text-lg font-bold">1</span>
+
+                <div className="space-y-3 max-w-lg mx-auto">
+                  {[
+                    { step: '1', title: 'Tap the Share Button', desc: 'The square with arrow (↑) at the bottom of Safari', color: 'bg-blue-600' },
+                    { step: '2', title: '"Add to Home Screen"', desc: 'Scroll down in the share menu and tap this option', color: 'bg-blue-600' },
+                    { step: '3', title: 'Tap "Add"', desc: 'Confirm in the top right corner', color: 'bg-blue-600' },
+                    { step: '✓', title: 'Done! 🎉', desc: 'XORcists now appears on your home screen', color: 'bg-emerald-600' },
+                  ].map((item, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-4 p-4 rounded-xl border transition-colors ${
+                        item.step === '✓'
+                          ? 'bg-emerald-50 border-emerald-200'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className={`shrink-0 w-9 h-9 ${item.color} text-white rounded-full flex items-center justify-center text-sm font-bold`}>
+                        {item.step}
+                      </span>
                       <div>
-                        <strong className="block mb-1">Tap the Share Button</strong>
-                        <span className="text-sm">Look for the square with arrow (↑) at the bottom of your Safari browser</span>
+                        <strong className="block text-slate-900 text-sm">{item.title}</strong>
+                        <span className="text-slate-500 text-xs">{item.desc}</span>
                       </div>
-                    </li>
-                    <li className="flex items-start gap-4 bg-white p-4 rounded-lg shadow-sm">
-                      <span className="shrink-0 w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center text-lg font-bold">2</span>
-                      <div>
-                        <strong className="block mb-1">Find "Add to Home Screen"</strong>
-                        <span className="text-sm">Scroll down in the share menu and tap this option</span>
-                      </div>
-                    </li>
-                    <li className="flex items-start gap-4 bg-white p-4 rounded-lg shadow-sm">
-                      <span className="shrink-0 w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center text-lg font-bold">3</span>
-                      <div>
-                        <strong className="block mb-1">Tap "Add" Button</strong>
-                        <span className="text-sm">Confirm by tapping "Add" in the top right corner</span>
-                      </div>
-                    </li>
-                    <li className="flex items-start gap-4 bg-white p-4 rounded-lg shadow-sm border-2 border-green-300">
-                      <span className="shrink-0 w-10 h-10 bg-green-600 text-white rounded-full flex items-center justify-center text-lg font-bold">✓</span>
-                      <div>
-                        <strong className="block mb-1 text-green-700">Done! 🎉</strong>
-                        <span className="text-sm">XSpark CRM icon now appears on your home screen!</span>
-                      </div>
-                    </li>
-                  </ol>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -236,79 +245,74 @@ export default function InstallPage() {
             {/* Other browsers */}
             {browserType === 'other' && (
               <div className="text-center">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                  Browser Not Supported
+                <h2 className="text-2xl font-bold text-slate-900 mb-3">
+                  Open in a Supported Browser
                 </h2>
-                <p className="text-gray-600 mb-4">
-                  For the best experience, please use:
+                <p className="text-slate-600 mb-6">
+                  For the best install experience, please use:
                 </p>
-                <ul className="text-gray-700 space-y-2 mb-6">
-                  <li>• Google Chrome (Android/Desktop)</li>
-                  <li>• Microsoft Edge (Desktop)</li>
-                  <li>• Safari (iOS/Mac)</li>
-                  <li>• Samsung Internet (Android)</li>
-                </ul>
+                <div className="inline-flex flex-col gap-2 text-left text-slate-700">
+                  {[
+                    'Google Chrome (Android/Desktop)',
+                    'Microsoft Edge (Desktop)',
+                    'Safari (iOS/Mac)',
+                    'Samsung Internet (Android)',
+                  ].map(browser => (
+                    <div key={browser} className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg">
+                      <CheckCircle2 size={14} className="text-purple-500" />
+                      <span className="text-sm">{browser}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Features Grid */}
-        <div className="grid md:grid-cols-3 gap-6 mb-6">
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4">
-              <Wifi size={24} className="text-purple-600" />
+        {/* Benefits */}
+        <div className="grid md:grid-cols-3 gap-4 mb-8">
+          {benefits.map((benefit, i) => (
+            <div
+              key={i}
+              className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 hover:shadow-md transition-shadow"
+            >
+              <div className={`w-11 h-11 ${benefit.bg} rounded-xl flex items-center justify-center mb-4`}>
+                <benefit.icon size={20} className="text-purple-600" />
+              </div>
+              <h3 className="font-bold text-slate-900 mb-1 text-sm">{benefit.title}</h3>
+              <p className="text-slate-500 text-xs leading-relaxed">{benefit.description}</p>
             </div>
-            <h3 className="font-bold text-gray-900 mb-2">Works Offline</h3>
-            <p className="text-gray-600 text-sm">
-              Capture leads even without internet connection. Data syncs automatically when back online.
-            </p>
-          </div>
+          ))}
+        </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
-              <Monitor size={24} className="text-blue-600" />
-            </div>
-            <h3 className="font-bold text-gray-900 mb-2">Full Screen</h3>
-            <p className="text-gray-600 text-sm">
-              Runs in standalone mode with no browser UI, just like a native app.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-              <Tablet size={24} className="text-green-600" />
-            </div>
-            <h3 className="font-bold text-gray-900 mb-2">All Devices</h3>
-            <p className="text-gray-600 text-sm">
-              Install on Android, iOS, Windows, Mac, and Linux. Works everywhere!
-            </p>
+        {/* Alternative Methods */}
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl p-6 text-white">
+          <h3 className="font-bold text-sm mb-4 flex items-center gap-2">
+            <Zap size={14} className="text-yellow-400" />
+            Alternative Install Methods
+          </h3>
+          <div className="grid sm:grid-cols-3 gap-4 text-xs">
+            {[
+              { platform: 'Desktop', instruction: 'Click ⊕ in the address bar' },
+              { platform: 'Android', instruction: 'Menu (⋮) → "Install app"' },
+              { platform: 'iOS', instruction: 'Share → "Add to Home Screen"' },
+            ].map(method => (
+              <div key={method.platform} className="bg-white/5 border border-white/10 rounded-xl p-3">
+                <span className="font-semibold text-purple-300 block mb-1">{method.platform}</span>
+                <span className="text-slate-400">{method.instruction}</span>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Device Instructions */}
-        <div className="bg-white/10 backdrop-blur rounded-xl p-6 text-white">
-          <h3 className="font-bold text-lg mb-4">Alternative Install Methods</h3>
-          <div className="space-y-3 text-sm">
-            <div>
-              <strong>Desktop (Chrome/Edge):</strong> Look for the install icon (⊕) in the address bar
-            </div>
-            <div>
-              <strong>Android (Chrome):</strong> Menu (⋮) → "Install app" or "Add to Home Screen"
-            </div>
-            <div>
-              <strong>iOS (Safari):</strong> Share button → "Add to Home Screen"
-            </div>
-          </div>
-        </div>
-
-        {/* Back Button */}
+        {/* Back */}
         <div className="text-center mt-8">
           <button
             onClick={() => router.push('/')}
-            className="text-white hover:text-purple-100 font-medium transition-colors"
+            className="text-slate-500 hover:text-slate-700 font-medium transition-colors text-sm inline-flex items-center gap-1"
           >
-            ← Back to App
+            <ArrowLeft size={14} />
+            Back to Home
           </button>
         </div>
       </div>

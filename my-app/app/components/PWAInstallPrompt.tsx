@@ -114,7 +114,7 @@ export default function PWAInstallPrompt() {
 
           {/* Content */}
           <h3 className="text-xl font-bold text-gray-900 mb-2 text-center">
-            Install XSpark CRM
+            Install XORcists
           </h3>
           
           <p className="text-gray-600 text-center mb-6">
