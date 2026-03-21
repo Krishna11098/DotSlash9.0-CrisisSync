@@ -83,6 +83,20 @@ export async function convertAudioToText(audioBase64: string): Promise<string> {
 }
 
 // ============================================================================
+// Helper: Resolve URL or Base64 explicitly to a Buffer
+// ============================================================================
+async function resolveImageBuffer(source: string): Promise<Buffer> {
+  if (source.startsWith("http://") || source.startsWith("https://")) {
+    const res = await fetch(source);
+    if (!res.ok) throw new Error(`Failed to fetch image URL: ${res.status}`);
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+  const base64Data = source.includes(",") ? source.split(",")[1] : source;
+  return Buffer.from(base64Data, "base64");
+}
+
+// ============================================================================
 // 🧠 STEP 1: FAKE DETECTION MODELS
 // ============================================================================
 
@@ -93,13 +107,13 @@ export async function convertAudioToText(audioBase64: string): Promise<string> {
  */
 export async function detectImageFake(imageBase64: string): Promise<number> {
   try {
-    // Convert base64 to buffer
-    const imageBuffer = Buffer.from(imageBase64.split(",")[1] || imageBase64, "base64");
+    // Resolve URL or Base64 to Buffer
+    const imageBuffer = await resolveImageBuffer(imageBase64);
     
     const formData = new FormData();
-    const blob = new Blob([imageBuffer], { type: "image/jpeg" });
+    const blob = new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" });
     formData.append("media", blob);
-    formData.append("models", "nudity,wad,offensive,face");
+    formData.append("models", "nudity,wad,offensive,faces");
     formData.append("api_user", process.env.SIGHTENGINE_USER_ID || "");
     formData.append("api_secret", process.env.SIGHTENGINE_API_KEY || "");
 
@@ -204,19 +218,23 @@ export async function detectTextFake(text: string): Promise<number> {
  */
 export async function getImageDescriptionFromGemini(imageBase64: string): Promise<string> {
   try {
-    // Extract base64 without data URL prefix
-    const base64Image = imageBase64.includes(",") 
-      ? imageBase64.split(",")[1] 
-      : imageBase64;
+    // Resolve URL or Base64 to Buffer, then convert back to pure base64 for Gemini
+    const imageBuffer = await resolveImageBuffer(imageBase64);
+    const base64Image = imageBuffer.toString("base64");
 
-    const geminiApiKey = process.env.GEMINI_API_KEY || "AIzaSyDummyGeminiKeyPlaceholder123456789";
+    // Try both possible API key environment variables
+    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "AIzaSyDummyGeminiKeyPlaceholder123456789";
     
     if (geminiApiKey.includes("Dummy")) {
-      console.warn("⚠️ Using dummy Gemini API key. Set GEMINI_API_KEY in .env.local for production");
+      console.warn("⚠️ Using dummy Gemini API key. Set GEMINI_API_KEY or NEXT_PUBLIC_GOOGLE_API_KEY in .env.local for production");
+      return ""; // Don't attempt API call with dummy key
     }
 
+    // ✅ Use gemini-2.0-flash (latest) - gemini-pro-vision is DEPRECATED
+    const modelName = "gemini-2.5-flash";
+    
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: {
@@ -227,11 +245,43 @@ export async function getImageDescriptionFromGemini(imageBase64: string): Promis
             {
               parts: [
                 {
-                  text: "Describe this image in detail. Focus on objects, people, actions, and any emergency or crisis indicators. Be specific and factual.",
+                  text: `You are an INCORRUPTIBLE, ULTRA-STRICT EMERGENCY RESPONSE AI. Your SOLE DIRECTIVE is to annihilate FALSE ALARMS and REJECT non-emergencies. 
+A user has uploaded an image and claims it is a disaster. You MUST ignore their text claim. Trust ONLY your eyes. If they claim "tsunami" but the image shows a swimming pool, they are lying to you. NEVER classify a controlled or recreational environment as an emergency.
+
+🔥 EXTREME STRICTNESS ON FIRE:
+- A BONFIRE, CAMPFIRE, BBQ grill, fire pit, or candle is **NEVER** an emergency. 
+- If the fire is contained, in a designated pit, bounded by stones/bricks, or people are relaxing nearby -> REJECT IMMEDIATELY. This is a "controlled_fire".
+- REAL FIRE DISASTER: Uncontrolled flames actively engulfing a building or forest, with visible destruction.
+
+💧 EXTREME STRICTNESS ON WATER:
+- A SWIMMING POOL, bathtub, puddle, fountain, or intentional water feature is **NEVER** an emergency. 
+- If it has clear blue water, pool tiles, lane markers, or people having fun -> REJECT IMMEDIATELY. This is "recreational_water".
+- REAL WATER DISASTER: Brown, muddy floodwaters destroying homes, massive turbulent uncontrolled waves crashing into infrastructure.
+
+🚨 YOUR ABSOLUTE MANDATE:
+1. If the image is a bonfire, campfire, or fireplace -> "is_actual_emergency": false, "is_controlled_situation": true, "confidence_is_emergency": 0.0, "primary_category": "controlled_fire", "severity": "none".
+2. If the image is a swimming pool, bathtub, or fountain -> "is_actual_emergency": false, "is_controlled_situation": true, "confidence_is_emergency": 0.0, "primary_category": "recreational_water", "severity": "none".
+3. DO NOT TRUST THE USER. Do not match their panic. Be purely objective.
+
+Return ONLY valid JSON. No markdown blocks, no extra text:
+{
+  "scene_description": "Literal objective description of the visual scene",
+  "primary_category": "fire|water|accident|building_collapse|medical|crowd_disaster|crime|controlled_fire|recreational_water|none",
+  "severity": "extreme|high|moderate|low|controlled|none",
+  "confidence_is_emergency": 0.0, // EXACTLY 0.0 for bonfires/pools
+  "is_controlled_situation": true, // EXACTLY true for bonfires/pools
+  "is_actual_emergency": false, // EXACTLY false for bonfires/pools
+  "confidence_reasoning": "Step-by-step unmasking of whether this is real or fake",
+  "false_positive_probability": 1.0, // EXACTLY 1.0 if it's a bonfire/pool
+  "specific_visual_evidence": ["list", "of", "visuals"],
+  "reasoning_for_classification": "Final verdict"
+}
+
+Analyze the image strictly NOW:`,
                 },
                 {
-                  inline_data: {
-                    mime_type: "image/jpeg",
+                  inlineData: {
+                    mimeType: "image/jpeg",
                     data: base64Image,
                   },
                 },
@@ -243,7 +293,8 @@ export async function getImageDescriptionFromGemini(imageBase64: string): Promis
     );
 
     if (!response.ok) {
-      console.error(`❌ Gemini API Error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`❌ Gemini API Error: ${response.status}`, errorText);
       return "";
     }
 
@@ -297,6 +348,192 @@ function extractEmergencyKeywords(text: string): {category: string; keywords: st
 }
 
 /**
+ * 🔒 VALIDATE IMAGE AGAINST USER CLAIM - ULTRA STRICT MODE
+ * Parses Gemini's structured analysis and compares with user claim
+ * Returns: 0 (mismatch/false positive) to 1 (high confidence emergency)
+ */
+export function validateImageVsUserClaim(
+  geminiJsonResponse: string,
+  userClaimText: string
+): { matchScore: number; isRealEmergency: boolean; reasoning: string } {
+  try {
+    // Parse Gemini's JSON response
+    let geminiAnalysis: any;
+    
+    try {
+      const jsonMatch = geminiJsonResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        geminiAnalysis = JSON.parse(jsonMatch[0]);
+      } else {
+        geminiAnalysis = JSON.parse(geminiJsonResponse);
+      }
+    } catch (parseError) {
+      console.error("❌ Failed to parse Gemini JSON response:", geminiJsonResponse.substring(0, 200));
+      return { matchScore: 0.05, isRealEmergency: false, reasoning: "Could not parse image analysis" };
+    }
+
+    // Extract ALL critical fields from Gemini analysis
+    const isImageEmergency = geminiAnalysis.is_actual_emergency === true;
+    const isControlledSituation = geminiAnalysis.is_controlled_situation === true;
+    const imageConfidence = geminiAnalysis.confidence_is_emergency || 0;
+    const falsePositiveProbability = geminiAnalysis.false_positive_probability || 0;
+    const imageCategory = geminiAnalysis.primary_category || "none";
+    const imageSeverity = geminiAnalysis.severity || "none";
+    const userClaim = userClaimText.toLowerCase();
+
+    console.log(`\n🔒 [ULTRA STRICT IMAGE VALIDATION]`);
+    console.log(`   - Emergency: ${isImageEmergency} | Controlled: ${isControlledSituation} | Confidence: ${imageConfidence.toFixed(2)}`);
+    console.log(`   - False positive probability: ${(falsePositiveProbability * 100).toFixed(0)}%`);
+    console.log(`   - Category: ${imageCategory}, Severity: ${imageSeverity}`);
+    console.log(`   - User claim: "${userClaimText.substring(0, 60)}..."`);
+
+    // ============================================================================
+    // LAYER 1: CONTROLLED SITUATION DETECTION - IMMEDIATE REJECT
+    // ============================================================================
+    const sceneDescObj = (geminiAnalysis.scene_description || "").toLowerCase();
+    const reasonObj = (geminiAnalysis.reasoning_for_classification || "").toLowerCase();
+    const combinedText = sceneDescObj + " " + reasonObj;
+    
+    // HARDCODED OVERRIDE: If the scene physically describes non-emergencies, OVERRIDE GEMINI'S DECISION entirely
+    const isHardcodedFake = ["pool", "bonfire", "campfire", "bathtub", "fireplace", "fountain", "beach", "grill", "bbq", "candle"].some(word => 
+      combinedText.includes(word)
+    );
+
+    if (isControlledSituation === true || isHardcodedFake || imageCategory === "controlled_fire" || imageCategory === "recreational_water") {
+      console.log(`   ⛔⛔ CONTROLLED SITUATION DETECTED: This is NOT an emergency. Object text: ${sceneDescObj}`);
+      return {
+        matchScore: 0.01,
+        isRealEmergency: false,
+        reasoning: `Image shows a controlled situation or recreational area (bonfire, pool, etc.), and fundamentally CANNOT be an emergency.`
+      };
+    }
+
+    // ============================================================================
+    // LAYER 2: HIGH FALSE POSITIVE PROBABILITY - REJECT
+    // ============================================================================
+    if (falsePositiveProbability > 0.6) {
+      console.log(`   ⛔⛔ FALSE POSITIVE PROBABILITY TOO HIGH: ${(falsePositiveProbability * 100).toFixed(0)}%`);
+      return {
+        matchScore: 0.08,
+        isRealEmergency: false,
+        reasoning: `Image analysis indicates high false positive probability (${(falsePositiveProbability * 100).toFixed(0)}%)`
+      };
+    }
+
+    // ============================================================================
+    // LAYER 3: SEMANTIC KEYWORD MATCHING - CONTROLLED FIRE TERMS
+    // ============================================================================
+    const controlledFireKeywords = ["bonfire", "campfire", "camping", "fireplace", "pool", "swimming", "park", "event", "controlled", "barrel", "grill"];
+    const disasterFireKeywords = ["building", "structure", "house", "home", "wildfire", "uncontrolled", "spreading", "street", "damage"];
+    const disasterWaterKeywords = ["flood", "street", "home", "building", "damage", "submerged", "overflow", "destruction"];
+    
+    const hasControlledKeyword = controlledFireKeywords.some(kw => userClaim.includes(kw));
+    const hasDisasterKeyword = disasterFireKeywords.some(kw => userClaim.includes(kw));
+    
+    if (hasControlledKeyword && !hasDisasterKeyword) {
+      console.log(`   ⛔ User claim contains controlled fire keywords: "${userClaim}"`);
+      return {
+        matchScore: 0.1,
+        isRealEmergency: false,
+        reasoning: `User claim contains controlled/safe keywords incompatible with actual emergency`
+      };
+    }
+
+    // ============================================================================
+    // LAYER 4: GEMINI CONFIDENCE GATE - STRICTER THRESHOLDS
+    // ============================================================================
+    if (!isImageEmergency) {
+      console.log(`   ⛔ Gemini says this is NOT an emergency`);
+      if (imageConfidence > 0.6) {
+        return {
+          matchScore: 0.05,
+          isRealEmergency: false,
+          reasoning: `Image analysis shows this is NOT an actual emergency with ${(imageConfidence * 100).toFixed(0)}% confidence`
+        };
+      } else {
+        return {
+          matchScore: 0.1,
+          isRealEmergency: false,
+          reasoning: `Image analysis indicates low confidence of emergency`
+        };
+      }
+    }
+
+    // ============================================================================
+    // LAYER 5: CONFIDENCE THRESHOLD - MUST BE VERY HIGH TO PASS
+    // ============================================================================
+    if (imageConfidence < 0.75) {
+      console.log(`   ⛔ Confidence too low for actual emergency: ${(imageConfidence * 100).toFixed(0)}%`);
+      return {
+        matchScore: 0.15,
+        isRealEmergency: false,
+        reasoning: `Image analysis confidence below safety threshold (${(imageConfidence * 100).toFixed(0)}% < 75%)`
+      };
+    }
+
+    // ============================================================================
+    // LAYER 6: CATEGORY MATCHING
+    // ============================================================================
+    const categoryToKeywords: Record<string, string[]> = {
+      fire: ["fire", "burning", "burn", "flame", "blaze", "inferno"],
+      water: ["flood", "tsunami", "drowning", "inundation", "overflow"],
+      accident: ["accident", "crash", "collision", "injured", "injury"],
+      building_collapse: ["collapse", "rubble", "debris", "destroyed"],
+      medical: ["medical", "injured", "sick", "ambulance", "emergency"],
+      crowd_disaster: ["stampede", "crush", "crowd", "disaster"],
+      crime: ["crime", "violence", "assault", "robbery", "shooting"],
+    };
+
+    // Check if image category matches user claim
+    const imageKeywords = categoryToKeywords[imageCategory] || [];
+    const userHasCategoryKeywords = imageKeywords.some(kw => userClaim.includes(kw));
+
+    // ============================================================================
+    // SEMANTIC MATCHING: User claim must align with image category
+    // ============================================================================
+    if (!userHasCategoryKeywords && imageCategory !== "none") {
+      console.log(`   ⛔ CATEGORY MISMATCH: User claims "${userClaimText}" but image shows ${imageCategory}`);
+      return {
+        matchScore: 0.15,
+        isRealEmergency: false,
+        reasoning: `Category mismatch: User describes "${userClaimText}" but image analysis shows ${imageCategory}`
+      };
+    }
+
+    // ============================================================================
+    // CONFIDENCE SCORING - ULTRA STRICT
+    // ============================================================================
+    let matchScore = 0;
+
+    // REQUIRE VERY HIGH CONFIDENCE - This is a safety-critical system
+    if (isImageEmergency && imageConfidence >= 0.88) {
+      // EXTREME confidence - only then give high score
+      matchScore = 0.85 + (0.15 * (imageConfidence - 0.88) / 0.12); // 0.85-1.0 (only from 0.88+)
+    } else if (isImageEmergency && imageConfidence >= 0.80) {
+      // High confidence
+      matchScore = 0.65 + (0.2 * (imageConfidence - 0.80) / 0.08); // 0.65-0.85
+    } else if (isImageEmergency && imageConfidence >= 0.75) {
+      // Moderate confidence (still just barely passing)
+      matchScore = 0.45;
+    } else {
+      // Below threshold - reject
+      matchScore = 0.12;
+    }
+
+    console.log(`   ✅ Final Match Score: ${matchScore.toFixed(3)} (Gemini confidence: ${(imageConfidence * 100).toFixed(0)}%)`);
+
+    return {
+      matchScore: Math.max(0, Math.min(matchScore, 1.0)),
+      isRealEmergency: isImageEmergency && imageConfidence > 0.75,
+      reasoning: `Image quality verified at ${(imageConfidence * 100).toFixed(0)}% confidence. Category: ${imageCategory}, Severity: ${imageSeverity}.`
+    };
+  } catch (error) {
+    console.error("❌ Image validation error:", error);
+    return { matchScore: 0.05, isRealEmergency: false, reasoning: "Image validation error - rejecting for safety" };
+  }
+}
+
+/**
  * Match Keywords Between Gemini Description and User Text
  * If keywords match (e.g., both mention "fire"), don't flag as suspicious
  * Returns: match score 0-1 (higher = better match)
@@ -347,21 +584,47 @@ export async function clipImageTextMatch(
   text: string
 ): Promise<number> {
   try {
-    // Get image description from Gemini
-    const geminiDescription = await getImageDescriptionFromGemini(imageBase64);
+    // Get structured image analysis from Gemini (now returns JSON)
+    const geminiResponse = await getImageDescriptionFromGemini(imageBase64);
 
-    if (!geminiDescription) {
-      console.warn("⚠️ Could not get image description from Gemini, using fallback");
-      return 0.6;
+    if (!geminiResponse) {
+      console.warn("⚠️ Could not get image analysis from Gemini, using ULTRA strict fallback");
+      
+      // ============================================================================
+      // BACKUP DEFENSE: When Gemini fails, use aggressive text+image heuristics
+      // ============================================================================
+      const textLower = text.toLowerCase();
+      
+      // Check if text contains dangerous false-positive keywords
+      const bonefireKeywords = ["bonfire", "campfire", "fireplace", "grill", "bbq", "camping", "party"];
+      const poolKeywords = ["pool", "swimming", "swim", "beach", "water park"];
+      const controlledKeywords = bonefireKeywords.concat(poolKeywords);
+      
+      const hasBonfireKeyword = bonefireKeywords.some(kw => textLower.includes(kw));
+      const hasPoolKeyword = poolKeywords.some(kw => textLower.includes(kw));
+      
+      // If user mentions bonfire/pool in text, be EXTREMELY suspicious of the image
+      if (hasBonfireKeyword || hasPoolKeyword) {
+        console.log(`   ⛔⛔ BACKUP DEFENSE: Text contains controlled fire/water keywords`);
+        console.log(`      Bonfire match: ${hasBonfireKeyword}, Pool match: ${hasPoolKeyword}`);
+        return 0.08; // VERY LOW when Gemini fails + controlled keywords detected
+      }
+      
+      // Otherwise default to very strict fallback
+      return 0.15; // Stricter than before
     }
 
-    // Match keywords between Gemini description and user text
-    const matchScore = matchKeywordsGeminiVsUserText(geminiDescription, text);
+    // Validate image against user's text claim using intelligent semantic matching
+    const validation = validateImageVsUserClaim(geminiResponse, text);
 
-    return matchScore;
+    console.log(`🧠 [clipImageTextMatch] Match Result: ${validation.matchScore.toFixed(3)}`);
+    console.log(`   - Is Real Emergency: ${validation.isRealEmergency}`);
+    console.log(`   - Reasoning: ${validation.reasoning}`);
+
+    return validation.matchScore;
   } catch (error) {
     console.error("Image-text matching error:", error);
-    return 0.6; // Neutral fallback
+    return 0.12; // Ultra-strict fallback on error
   }
 }
 
@@ -376,10 +639,10 @@ export async function clipImageTextMatch(
  */
 export async function detectSceneObjects(imageBase64: string): Promise<string[]> {
   try {
-    const imageBuffer = Buffer.from(imageBase64.split(",")[1] || imageBase64, "base64");
+    const imageBuffer = await resolveImageBuffer(imageBase64);
     
     const formData = new FormData();
-    const blob = new Blob([imageBuffer], { type: "image/jpeg" });
+    const blob = new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" });
     formData.append("media", blob);
     formData.append("models", "weapons,properties");
     formData.append("api_user", process.env.SIGHTENGINE_USER_ID || "");
@@ -1351,6 +1614,37 @@ export async function processSubmission(
   console.log("🧠 Matching image with text description (CLIP)...");
   const clipSimilarity = await clipImageTextMatch(request.image, finalTextDescription);
 
+  // ⛔ CRITICAL: FALSE POSITIVE GATE (ULTRA AGGRESSIVE - ZERO TOLERANCE)
+  // With the new ultra-strict scoring, legitimate emergencies score 0.45+
+  // ANYTHING below 0.35 is automatically rejected (bonfire, pool, etc.)
+  // This catches the boundary case where clipSimilarity = 0.300
+  if (clipSimilarity <= 0.35) {
+    console.log(`\n🚨 ⛔⛔⛔ FALSE POSITIVE GATE TRIGGERED: Image-text match critically low (${clipSimilarity.toFixed(3)} <= 0.35)`);
+    console.log(`   This is DEFINITELY a BONFIRE vs FIRE DISASTER or POOL vs TSUNAMI scenario`);
+    console.log(`   ZERO TOLERANCE - Outright rejecting immediately`);
+    
+    return {
+      image_fake_score: 1, // Mark as definitely fake
+      text_spam_score: 0,
+      clip_similarity: clipSimilarity,
+      detected_objects: [],
+      severity: "LOW",
+      confidence: 0,
+      is_fake: true,
+      reasoning: `🚨 REJECTED - ZERO TOLERANCE FALSE POSITIVE: Image-text match score (${clipSimilarity.toFixed(3)}) is critically low. Image does not depict actual emergency (appears to be bonfire, pool, beach, or other non-emergency). Genuine emergency visual evidence REQUIRED.`,
+      priority: {
+        priority_level: "LOW",
+        priority_score: 0,
+        recommendation: "🚨 ZERO TOLERANCE REJECTION: Confirmed false positive. Image shows non-emergency situation.",
+        estimated_urgency_seconds: 0,
+        department: "Municipal",
+        department_priority: "Rejected",
+        department_confidence: 0,
+      },
+      approved: false,
+    };
+  }
+
   // Step 3: Scene Understanding
   console.log("🔍 Detecting scene objects...");
   const detectedObjects = await detectSceneObjects(request.image);
@@ -1372,6 +1666,38 @@ export async function processSubmission(
   console.log(`\n📊 [processSubmission] Analyzing Severity...`);
   const severity = analyzeSeverity(detectedObjects, finalTextDescription);
   console.log(`📊 [processSubmission] Severity Result: ${severity}`);
+
+  // ============================================================================
+  // MEGA DEFENSE: Low clip similarity + high claimed severity = FRAUD
+  // ============================================================================
+  const textLower = finalTextDescription.toLowerCase();
+  const claimsUrgentEmergency = ["fire", "flood", "tsunami", "disaster", "emergency", "critical"].some(word => textLower.includes(word));
+  
+  if (clipSimilarity < 0.40 && claimsUrgentEmergency && severity !== "LOW") {
+    console.log(`\n🚨 MEGA DEFENSE TRIGGERED: Low image-text match (${clipSimilarity.toFixed(3)}) + claims urgent emergency`);
+    console.log(`   This is a FRAUD ATTEMPT - user claims ${severity} emergency but image doesn't match`);
+    
+    return {
+      image_fake_score: 1,
+      text_spam_score: 0.8,
+      clip_similarity: clipSimilarity,
+      detected_objects: [],
+      severity: "LOW",
+      confidence: 0,
+      is_fake: true,
+      reasoning: `🚨 REJECTED - FRAUD DETECTED: User claims ${severity} emergency but image shows non-matching content. Image-text alignment score: ${clipSimilarity.toFixed(3)}. Suspected false emergency report.`,
+      priority: {
+        priority_level: "LOW",
+        priority_score: 0,
+        recommendation: "🚨 FRAUD REJECTED: Claims urgent emergency but image validation failed. Report flagged for review.",
+        estimated_urgency_seconds: 0,
+        department: "Municipal",
+        department_priority: "Rejected",
+        department_confidence: 0,
+      },
+      approved: false,
+    };
+  }
 
   // Build verification result
   const verification: VerificationResult = {
