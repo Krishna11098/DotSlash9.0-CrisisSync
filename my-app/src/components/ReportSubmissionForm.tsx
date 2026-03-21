@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { VerificationResult, PrioritizationOutput, FinalResponse } from "@/lib/types";
 
 interface SubmissionState {
@@ -15,6 +15,7 @@ export function ReportSubmissionForm() {
   const [formData, setFormData] = useState({
     image: "",
     text_description: "",
+    audio: "",
     location: "",
     report_count: 1,
   });
@@ -24,9 +25,37 @@ export function ReportSubmissionForm() {
     submitted: false,
   });
 
+  // Audio recording states
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioTranscription, setAudioTranscription] = useState("");
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   useEffect(() => {
     setHydrated(true);
+
+    // Cleanup on unmount
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
   }, []);
+
+  // Auto-transcribe when audio is recorded and set
+  useEffect(() => {
+    if (formData.audio && !audioTranscription && !isTranscribing) {
+      console.log("📝 Audio detected. Starting transcription...");
+      transcribeAudio();
+    }
+  }, [formData.audio]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -40,6 +69,132 @@ export function ReportSubmissionForm() {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // Start recording audio
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      audioChunksRef.current = [];
+      setRecordingTime(0);
+      setAudioTranscription("");
+
+      // Use the best supported audio format
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/mp4";
+
+      console.log("📢 Using MIME type:", mimeType);
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        console.log("🎵 Audio blob created. Size:", audioBlob.size, "bytes");
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const audioBase64 = e.target?.result as string;
+          console.log("📝 Audio converted to base64. Length:", audioBase64.length);
+          setFormData({
+            ...formData,
+            audio: audioBase64,
+          });
+          // Audio is now set, useEffect will trigger transcription
+        };
+        reader.readAsDataURL(audioBlob);
+
+        // Stop all tracks
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+
+      // Timer
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } catch (error) {
+      console.error("Microphone access denied:", error);
+      setState((prev) => ({
+        ...prev,
+        error: "Microphone access denied. Please allow microphone permissions.",
+      }));
+    }
+  };
+
+  // Stop recording
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    }
+  };
+
+  // Transcribe the recorded audio
+  const transcribeAudio = async () => {
+    if (!formData.audio) {
+      console.log("No audio to transcribe");
+      return;
+    }
+
+    setIsTranscribing(true);
+    console.log("🎙️ Sending audio for transcription...");
+    console.log("Audio data size:", formData.audio.length, "characters");
+
+    try {
+      const response = await fetch("/api/transcribe-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audio: formData.audio,
+        }),
+      });
+
+      const result = await response.json();
+
+      console.log("📨 Response status:", response.status);
+      console.log("📨 Response data:", result);
+
+      if (!response.ok) {
+        const errorMsg = result.error || `Server error: ${response.status}`;
+        console.error("❌ Backend error:", errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      if (!result.text) {
+        throw new Error("No transcription text in response");
+      }
+
+      console.log("✅ Transcription complete:", result.text);
+      setAudioTranscription(result.text);
+    } catch (error) {
+      console.error("Transcription error:", error);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      setAudioTranscription(`Error: ${errorMsg}`);
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // Delete recording
+  const deleteRecording = () => {
+    setFormData({ ...formData, audio: "" });
+    setAudioTranscription("");
+    setRecordingTime(0);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -69,9 +224,12 @@ export function ReportSubmissionForm() {
       setFormData({
         image: "",
         text_description: "",
+        audio: "",
         location: "",
         report_count: 1,
       });
+      setAudioTranscription("");
+      setRecordingTime(0);
     } catch (error) {
       setState({
         loading: false,
@@ -89,11 +247,17 @@ export function ReportSubmissionForm() {
     return null;
   }
 
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
   return (
     <div className="w-full max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-lg" suppressHydrationWarning>
       <h1 className="text-3xl font-bold mb-2 text-zinc-900">🚨 Report Verification System</h1>
       <p className="text-zinc-600 mb-6">
-        Upload image + description. Our AI will verify authenticity and prioritize response.
+        Upload image + description. Record audio for additional details. Our AI will verify authenticity and prioritize response.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -154,6 +318,86 @@ export function ReportSubmissionForm() {
           />
         </div>
 
+        {/* Live Audio Recording (Similar to WhatsApp) */}
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-2">
+            🎙️ Audio Description (Optional - Live Recording)
+          </label>
+          
+          {!formData.audio ? (
+            // Recording interface
+            <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 bg-blue-50 text-center">
+              <button
+                type="button"
+                onClick={!isRecording ? startRecording : stopRecording}
+                className={`mx-auto mb-4 px-6 py-3 rounded-full font-semibold text-white transition-all flex items-center justify-center gap-2 ${
+                  isRecording
+                    ? "bg-red-500 hover:bg-red-600 animate-pulse"
+                    : "bg-blue-500 hover:bg-blue-600"
+                }`}
+              >
+                {isRecording ? (
+                  <>
+                    <span className="animate-pulse">●</span>
+                    Stop Recording ({formatTime(recordingTime)})
+                  </>
+                ) : (
+                  <>
+                    🎤 Start Recording
+                  </>
+                )}
+              </button>
+              <p className="text-xs text-zinc-600 mt-3">
+                {isRecording
+                  ? "Recording... Speak now"
+                  : "Click to start recording audio description (like WhatsApp voice message)"}
+              </p>
+            </div>
+          ) : (
+            // Recording completed with transcription
+            <div className="border-2 border-green-300 rounded-lg p-6 bg-green-50 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-green-700">✓ Audio recorded ({formatTime(recordingTime)})</p>
+                <button
+                  type="button"
+                  onClick={deleteRecording}
+                  className="text-sm text-red-600 hover:text-red-700 font-medium"
+                >
+                  Delete & Re-record
+                </button>
+              </div>
+
+              {/* Transcription Display */}
+              <div className="bg-white rounded-lg p-4 border border-green-200">
+                {isTranscribing ? (
+                  <div className="flex items-center gap-2">
+                    <span className="animate-spin">⏳</span>
+                    <p className="text-sm text-zinc-600">Converting speech to text...</p>
+                  </div>
+                ) : audioTranscription ? (
+                  <div>
+                    <p className="text-xs font-semibold text-zinc-700 mb-2">📄 Transcription:</p>
+                    <p className="text-sm text-zinc-800 bg-zinc-50 p-3 rounded border-l-4 border-blue-500">
+                      "{audioTranscription}"
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-zinc-600">No transcription available</p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={transcribeAudio}
+                disabled={isTranscribing}
+                className="w-full py-2 px-3 text-sm font-medium bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isTranscribing ? "Transcribing..." : "🔄 Re-transcribe"}
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Location */}
         <div>
           <label htmlFor="location" className="block text-sm font-medium text-zinc-700 mb-2">
@@ -212,6 +456,7 @@ export function ReportSubmissionForm() {
           <li>✅ Deepfake detection analyzes image authenticity</li>
           <li>✅ NLP validates description is genuine (not AI-generated spam)</li>
           <li>✅ CLIP ensures image matches description</li>
+          <li>✅ 🎙️ Live audio recording converts speech to text (AssemblyAI)</li>
           <li>✅ AI detects hazards in scene</li>
           <li>✅ Priority engine routes to appropriate teams</li>
         </ul>

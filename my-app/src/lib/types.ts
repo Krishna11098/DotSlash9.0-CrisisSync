@@ -33,6 +33,7 @@ export interface PrioritizationOutput {
 export interface SubmissionRequest {
   image: string; // base64 or URL
   text_description: string;
+  audio?: string; // base64 audio file (optional - can be used to generate additional text)
   location?: string;
   report_count?: number;
   coordinates?: {

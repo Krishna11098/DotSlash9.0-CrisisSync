@@ -4,13 +4,14 @@ import { processSubmission } from "@/lib/pipeline";
 /**
  * 🚀 API Route: /api/verify-report
  * 
- * POST endpoint for submitting a report (image + description)
+ * POST endpoint for submitting a report (image + description + optional audio)
  * Returns: Full verification + priority assessment
  * 
  * Request body:
  * {
  *   image: "base64_string_or_url",
  *   text_description: "Description of the issue",
+ *   audio: "base64_audio_file (optional)",
  *   location: "Location name (optional)",
  *   report_count: 1,
  *   coordinates: { lat: 0, lng: 0 } (optional)
@@ -31,12 +32,14 @@ export async function POST(request: NextRequest) {
     // Log submission
     console.log("📨 New report submission received");
     console.log(`   Description: ${body.text_description.substring(0, 50)}...`);
+    console.log(`   Audio provided: ${body.audio ? "Yes" : "No"}`);
     console.log(`   Location: ${body.location || "Not specified"}`);
 
     // Process through pipeline
     const result = await processSubmission({
       image: body.image,
       text_description: body.text_description,
+      audio: body.audio,
       location: body.location,
       report_count: body.report_count || 1,
       coordinates: body.coordinates,

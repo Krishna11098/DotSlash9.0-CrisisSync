@@ -7,6 +7,144 @@
 import { VerificationResult, PrioritizationInput, PrioritizationOutput, SubmissionRequest, FinalResponse } from "./types";
 
 // ============================================================================
+// 🎙️ AUDIO TO TEXT CONVERSION (AssemblyAI)
+// ============================================================================
+
+/**
+ * Convert Audio to Text using AssemblyAI
+ * Accepts base64 encoded audio file
+ * Returns: transcribed text or empty string on failure
+ */
+export async function convertAudioToText(audioBase64: string): Promise<string> {
+  try {
+    if (!audioBase64) {
+      console.warn("⚠️ No audio provided");
+      return "";
+    }
+
+    const assemblyAIKey = process.env.ASSEMBLYAI_API_KEY || "";
+
+    if (!assemblyAIKey) {
+      console.error("❌ AssemblyAI API key not configured");
+      return "";
+    }
+
+    // Extract base64 without data URL prefix
+    const base64Audio = audioBase64.includes(",")
+      ? audioBase64.split(",")[1]
+      : audioBase64;
+
+    // Convert base64 to buffer
+    const audioBuffer = Buffer.from(base64Audio, "base64");
+
+    console.log("🎙️ Uploading audio to AssemblyAI...");
+
+    // Step 1: Upload audio file
+    const uploadFormData = new FormData();
+    const audioBlob = new Blob([audioBuffer], { type: "audio/wav" });
+    uploadFormData.append("audio_data", audioBlob);
+
+    const uploadResponse = await fetch(
+      "https://api.assemblyai.com/v2/upload",
+      {
+        method: "POST",
+        headers: {
+          Authorization: assemblyAIKey,
+        },
+        body: uploadFormData,
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      console.error(`❌ AssemblyAI upload error: ${uploadResponse.status}`);
+      return "";
+    }
+
+    const uploadData = await uploadResponse.json() as { upload_url: string };
+    const audioUrl = uploadData.upload_url;
+
+    console.log("✅ Audio uploaded. Requesting transcription...");
+
+    // Step 2: Request transcription
+    const transcriptResponse = await fetch(
+      "https://api.assemblyai.com/v2/transcript",
+      {
+        method: "POST",
+        headers: {
+          Authorization: assemblyAIKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          audio_url: audioUrl,
+          language_code: "en",
+        }),
+      }
+    );
+
+    if (!transcriptResponse.ok) {
+      console.error(`❌ AssemblyAI transcription error: ${transcriptResponse.status}`);
+      return "";
+    }
+
+    const transcriptData = await transcriptResponse.json() as { id: string };
+    const transcriptId = transcriptData.id;
+
+    console.log(`📝 Transcription requested (ID: ${transcriptId})`);
+
+    // Step 3: Poll for transcription result
+    let transcript = "";
+    let attempts = 0;
+    const maxAttempts = 60; // Max 60 seconds of polling (1 second each)
+
+    while (attempts < maxAttempts) {
+      const pollResponse = await fetch(
+        `https://api.assemblyai.com/v2/transcript/${transcriptId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: assemblyAIKey,
+          },
+        }
+      );
+
+      if (!pollResponse.ok) {
+        console.error(`❌ Poll error: ${pollResponse.status}`);
+        break;
+      }
+
+      const pollData = await pollResponse.json() as {
+        status: string;
+        text?: string;
+      };
+
+      if (pollData.status === "completed") {
+        transcript = pollData.text || "";
+        console.log(`✅ Transcription complete: "${transcript.substring(0, 100)}..."`);
+        break;
+      }
+
+      if (pollData.status === "error") {
+        console.error("❌ Transcription failed");
+        break;
+      }
+
+      // Wait 1 second before next poll
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      attempts++;
+    }
+
+    if (attempts >= maxAttempts) {
+      console.warn("⚠️ Transcription polling timeout");
+    }
+
+    return transcript;
+  } catch (error) {
+    console.error("❌ Audio conversion error:", error);
+    return "";
+  }
+}
+
+// ============================================================================
 // 🧠 STEP 1: FAKE DETECTION MODELS
 // ============================================================================
 
@@ -503,16 +641,32 @@ export async function processSubmission(
 ): Promise<FinalResponse> {
   console.log("🔥 Processing submission...");
 
+  // Step 0: Process Audio if provided
+  let finalTextDescription = request.text_description;
+  
+  if (request.audio) {
+    console.log("🎙️ Processing audio input...");
+    const audioTranscription = await convertAudioToText(request.audio);
+    
+    if (audioTranscription) {
+      console.log(`📝 Audio transcribed: "${audioTranscription.substring(0, 50)}..."`);
+      // Merge audio transcription with user text
+      finalTextDescription = `${request.text_description}. Audio input: ${audioTranscription}`;
+    } else {
+      console.warn("⚠️ Could not transcribe audio, using text description only");
+    }
+  }
+
   // Step 1: Fake Detection
   console.log("📸 Detecting image deepfakes...");
   const imageFakeScore = await detectImageFake(request.image);
 
   console.log("📝 Detecting text spam/AI-generated...");
-  const textFakeScore = await detectTextFake(request.text_description);
+  const textFakeScore = await detectTextFake(finalTextDescription);
 
   // Step 2: Image-Text Consistency
   console.log("🧠 Matching image with text description (CLIP)...");
-  const clipSimilarity = await clipImageTextMatch(request.image, request.text_description);
+  const clipSimilarity = await clipImageTextMatch(request.image, finalTextDescription);
 
   // Step 3: Scene Understanding
   console.log("🔍 Detecting scene objects...");
@@ -532,7 +686,7 @@ export async function processSubmission(
   const confidence = isFake ? 0 : baseConfidence;  // Zero confidence if flagged
 
   // Step 5: Analyze Severity (if not fake)
-  const severity = analyzeSeverity(detectedObjects, request.text_description);
+  const severity = analyzeSeverity(detectedObjects, finalTextDescription);
 
   // Build verification result
   const verification: VerificationResult = {
