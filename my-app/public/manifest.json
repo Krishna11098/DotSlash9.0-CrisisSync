@@ -60,18 +60,6 @@
   "categories": ["business", "productivity"],
   "shortcuts": [
     {
-      "name": "Capture Lead",
-      "short_name": "Capture",
-      "description": "Quickly capture a new lead",
-      "url": "/staff",
-      "icons": [
-        {
-          "src": "/icons/icon-96x96.png",
-          "sizes": "96x96"
-        }
-      ]
-    },
-    {
       "name": "Admin Dashboard",
       "short_name": "Admin",
       "description": "View admin dashboard",
