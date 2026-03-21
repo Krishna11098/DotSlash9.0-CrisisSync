@@ -7,6 +7,7 @@ import { saveRequestOffline } from '@/lib/offline-sync'
 import { supabase } from '@/lib/supabase'
 import { uploadAudioBlobToCloudinary } from '@/lib/audio-storage'
 import { saveAudioBlobLocally } from '@/lib/audio-storage'
+import { SubmissionRequest, FinalResponse, VerificationResult, PrioritizationOutput } from '@/lib/report-types'
 import ProtectedLayout from '@/app/components/ProtectedLayout'
 import SyncStatusIndicator from '@/app/components/SyncStatusIndicator'
 import {
@@ -66,6 +67,7 @@ export default function CitizenDashboard() {
 
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState({ text: '', type: '' })
+  const [submissionResult, setSubmissionResult] = useState<FinalResponse | null>(null)
 
   const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
 
@@ -339,21 +341,70 @@ export default function CitizenDashboard() {
       })
       console.log('[submit] Request saved successfully')
 
-      setMessage({ text: isOnline ? 'Request submitted successfully!' : 'Request saved offline. It will sync when you reconnect.', type: 'success' })
-      setTopic('')
-      setDepartments([])
-      setTimeLimit('')
-      setLatitude(null)
-      setLongitude(null)
-      setImageFile(null)
-      setImagePreview(null)
-      setAudioBlob(null)
+      // Call real verification API
+      console.log('[submit] Calling verification API...')
+      const { data: { session } } = await supabase.auth.getSession()
+      const authToken = session?.access_token
+
+      if (!authToken) {
+        throw new Error('Authentication failed. Please log in again.')
+      }
+
+      const apiResponse = await fetch('/api/submit-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          image: imageUrl || imagePreview || '',
+          text_description: topic,
+          audio: audioUrl || null,
+          location: `${latitude}, ${longitude}`,
+          departments,
+          coordinates: { lat: latitude, lng: longitude },
+          report_count: 1,
+        }),
+      })
+
+      if (!apiResponse.ok) {
+        const errorData = await apiResponse.json().catch(() => ({ error: 'API request failed' }))
+        throw new Error(errorData.error || errorData.message || 'Verification failed')
+      }
+
+      const apiData = await apiResponse.json()
+      const results = apiData.data as FinalResponse
+
+      console.log('[submit] Verification results:', results)
+      setSubmissionResult(results)
+
+      if (results.approved) {
+        setMessage({ text: '✅ Request verified and routed to authorities!', type: 'success' })
+      } else if (results.is_fake) {
+        setMessage({ text: '⚠️ Request flagged: ' + results.reasoning, type: 'error' })
+      } else {
+        setMessage({ text: '📊 Request processed and saved for review', type: 'success' })
+      }
     } catch (err: any) {
       console.error('[submit] Error:', err)
       setMessage({ text: err.message || 'Failed to submit request', type: 'error' })
     } finally {
       setLoading(false)
     }
+  }
+
+  // Reset form and results
+  const handleResetForm = () => {
+    setTopic('')
+    setDepartments([])
+    setTimeLimit('')
+    setLatitude(null)
+    setLongitude(null)
+    setImageFile(null)
+    setImagePreview(null)
+    setAudioBlob(null)
+    setSubmissionResult(null)
+    setMessage({ text: '', type: '' })
   }
 
   if (!user) return null
@@ -397,8 +448,11 @@ export default function CitizenDashboard() {
     <ProtectedLayout>
       <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-purple-50/30">
         <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12">
-          {/* Header */}
-          <div className="mb-8">
+          {/* Display form only if no results yet */}
+          {!submissionResult ? (
+            <>
+              {/* Header */}
+              <div className="mb-8">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-200">
                 <Sparkles className="w-6 h-6 text-white" />
@@ -680,12 +734,180 @@ export default function CitizenDashboard() {
             </button>
           </form>
 
-          {/* Help */}
-          <div className="mt-8 text-center">
-            <p className="text-sm text-slate-500">
-              Need help? Contact us at <span className="font-semibold text-slate-700">support@xorcists.com</span>
-            </p>
-          </div>
+          {/* Help - Only show when no results */}
+          {!submissionResult && (
+            <div className="mt-8 text-center">
+              <p className="text-sm text-slate-500">
+                Need help? Contact us at <span className="font-semibold text-slate-700">support@xorcists.com</span>
+              </p>
+            </div>
+          )}
+            </>
+          ) : null}
+
+          {/* Results Display */}
+          {submissionResult && (
+            <div className="mt-12 animate-fadeIn">
+              <div className="bg-white rounded-2xl shadow-lg border border-slate-200/80 p-8">
+                {/* Success Header */}
+                <div className="flex items-center gap-3 mb-8 pb-6 border-b border-slate-200">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    submissionResult.is_fake ? 'bg-red-100' : 'bg-emerald-100'
+                  }`}>
+                    {submissionResult.is_fake ? (
+                      <AlertTriangle className="w-6 h-6 text-red-600" />
+                    ) : (
+                      <CheckCircle className="w-6 h-6 text-emerald-600" />
+                    )}
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900">
+                      {submissionResult.is_fake ? '🚨 Verification Alert' : '✅ Report Verified'}
+                    </h2>
+                    <p className="text-sm text-slate-500">{submissionResult.reasoning}</p>
+                  </div>
+                </div>
+
+                {/* Priority & Status */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                  {/* Priority */}
+                  <div className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200">
+                    <p className="text-sm text-slate-600 mb-2 font-semibold">PRIORITY LEVEL</p>
+                    <div className="flex items-baseline gap-3">
+                      <span className={`text-3xl font-bold ${
+                        submissionResult.priority.priority_level === 'CRITICAL' ? 'text-red-600' :
+                        submissionResult.priority.priority_level === 'HIGH' ? 'text-orange-600' :
+                        submissionResult.priority.priority_level === 'MEDIUM' ? 'text-amber-600' :
+                        'text-emerald-600'
+                      }`}>
+                        {submissionResult.priority.priority_level}
+                      </span>
+                      <span className="text-slate-600 text-sm">Score: {submissionResult.priority.priority_score}/100</span>
+                    </div>
+                    <p className="text-xs text-slate-700 mt-2">{submissionResult.priority.department_priority}</p>
+                  </div>
+
+                  {/* Approval Status */}
+                  <div className={`p-6 rounded-xl border-2 ${
+                    submissionResult.is_fake
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-emerald-50 border-emerald-200'
+                  }`}>
+                    <p className="text-sm text-slate-600 mb-2 font-semibold">STATUS</p>
+                    <div className="flex items-center gap-2">
+                      {submissionResult.is_fake ? (
+                        <>
+                          <AlertTriangle className="w-6 h-6 text-red-600" />
+                          <div>
+                            <p className="font-bold text-red-600">FLAGGED</p>
+                            <p className="text-xs text-slate-600 mt-1">Suspicious content detected</p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-6 h-6 text-emerald-600" />
+                          <div>
+                            <p className="font-bold text-emerald-600">{submissionResult.approved ? 'APPROVED' : 'SAVED'}</p>
+                            <p className="text-xs text-slate-600 mt-1">
+                              {submissionResult.approved ? 'Routed to authorities' : 'Pending review'}
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Verification Metrics */}
+                <div className="mb-8">
+                  <h3 className="text-lg font-bold text-slate-900 mb-4">📊 Verification Metrics</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-xs text-slate-600 mb-2">Image Authenticity</p>
+                      <p className="text-2xl font-bold text-blue-600">{Math.round((1 - submissionResult.image_fake_score) * 100)}%</p>
+                      <p className="text-xs text-slate-500 mt-1">Fake score: {Math.round(submissionResult.image_fake_score * 100)}%</p>
+                    </div>
+                    <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                      <p className="text-xs text-slate-600 mb-2">Text Credibility</p>
+                      <p className="text-2xl font-bold text-indigo-600">{Math.round((1 - submissionResult.text_spam_score) * 100)}%</p>
+                      <p className="text-xs text-slate-500 mt-1">Spam score: {Math.round(submissionResult.text_spam_score * 100)}%</p>
+                    </div>
+                    <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                      <p className="text-xs text-slate-600 mb-2">Image-Text Match</p>
+                      <p className="text-2xl font-bold text-purple-600">{Math.round(submissionResult.clip_similarity * 100)}%</p>
+                    </div>
+                    <div className="p-4 bg-pink-50 rounded-lg border border-pink-200">
+                      <p className="text-xs text-slate-600 mb-2">Confidence</p>
+                      <p className="text-2xl font-bold text-pink-600">{Math.round(submissionResult.confidence * 100)}%</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Severity & Department Routing */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                  {/* Severity */}
+                  <div className="p-6 bg-slate-50 rounded-xl border border-slate-200">
+                    <h4 className="text-sm font-bold text-slate-900 mb-3">📍 SEVERITY</h4>
+                    <p className={`text-lg font-bold capitalize ${
+                      submissionResult.severity === 'CRITICAL' ? 'text-red-600' :
+                      submissionResult.severity === 'HIGH' ? 'text-orange-600' :
+                      submissionResult.severity === 'MEDIUM' ? 'text-amber-600' :
+                      'text-emerald-600'
+                    }`}>
+                      {submissionResult.severity}
+                    </p>
+                  </div>
+
+                  {/* Department Routed */}
+                  <div className="p-6 bg-slate-50 rounded-xl border border-slate-200">
+                    <h4 className="text-sm font-bold text-slate-900 mb-3">🏛️ ROUTED TO</h4>
+                    <p className="text-lg font-bold text-slate-900 capitalize">{submissionResult.priority.department}</p>
+                    <p className="text-xs text-slate-600 mt-2">Priority: {submissionResult.priority.department_priority}</p>
+                  </div>
+
+                  {/* Detected Objects */}
+                  <div className="p-6 bg-slate-50 rounded-xl border border-slate-200">
+                    <h4 className="text-sm font-bold text-slate-900 mb-3">🔍 DETECTED OBJECTS</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {submissionResult.detected_objects && submissionResult.detected_objects.length > 0 ? (
+                        submissionResult.detected_objects.map((obj, idx) => (
+                          <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium capitalize">
+                            {obj.replace(/_/g, ' ')}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-500">No objects detected</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recommendation */}
+                {submissionResult.priority.recommendation && (
+                  <div className="mb-8 p-6 bg-amber-50 rounded-xl border border-amber-200">
+                    <h4 className="text-sm font-bold text-amber-900 mb-3">📋 RECOMMENDATION</h4>
+                    <p className="text-sm text-amber-800">{submissionResult.priority.recommendation}</p>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-slate-200">
+                  <button
+                    onClick={handleResetForm}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300"
+                  >
+                    📝 Submit Another Request
+                  </button>
+                  <button
+                    onClick={() => router.push('/')}
+                    className="flex-1 px-6 py-3 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition-all border border-slate-300"
+                  >
+                    🏠 Go Home
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </ProtectedLayout>
