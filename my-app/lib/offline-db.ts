@@ -29,39 +29,21 @@ export type OfflineEvent = {
   cached_at: number
 }
 
-export type OfflineLead = {
-  local_id?: number
-  id?: string
-  event_id: string
-  name?: string | null
-  email: string
-  phone: string
-  company?: string | null
-  remark?: string | null
-  designation?: string | null
-  query_type?: string | null
-  stage?: string | null
-  priority?: number | null
-  entry_type?: string | null
-  capture_mode?: string | null
-  staff_id?: string | null
-  stall_number?: string | null
-  audio_file_url?: string | null
-  audio_file_local_id?: string | null
-  audio_file_text?: string | null
-  ai_summary?: string | null
-  is_duplicate?: boolean | null
-  duplicate_of?: string | null
-  follow_up_date?: string | null
-  follow_up_notes?: string | null
-  meeting_date?: string | null
-  meeting_link?: string | null
-  meeting_type?: string | null
-  meeting_notes?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-  sync_status: SyncStatus
-  local_updated_at: string
+export type OfflineRequest = {
+  local_id?: number;
+  id?: string;
+  topic: string;
+  image_url?: string | null;
+  audio_url?: string | null;
+  audio_file_local_id?: string | null;
+  latitude: number;
+  longitude: number;
+  departments: Array<'hospital' | 'fire' | 'police' | 'municipal corporation'>;
+  urgency: 'emergency' | 'urgent' | 'moderate';
+  time_limit_minutes?: number | null;
+  status: string;
+  client_created_at: string;
+  sync_status: SyncStatus;
 }
 
 export type OfflineAudioFile = {
@@ -76,7 +58,7 @@ export type OfflineAudioFile = {
 
 class XSparkOfflineDB extends Dexie {
   events!: Table<OfflineEvent, string>
-  leads!: Table<OfflineLead, number>
+  requests!: Table<OfflineRequest, number>
   pending_mutations!: Table<PendingMutation, number>
   audio_files!: Table<OfflineAudioFile, string>
 
@@ -97,6 +79,20 @@ class XSparkOfflineDB extends Dexie {
     this.version(3).stores({
       events: 'id, event_code, name, cached_at',
       leads: '++local_id, id, event_id, sync_status, local_updated_at, created_at, email, phone',
+      pending_mutations: '++id, entity, operation, record_id, created_at',
+      audio_files: 'id, created_at, uploaded_at'
+    })
+
+    this.version(4).stores({
+      events: 'id, event_code, name, cached_at',
+      requests: '++local_id, id, sync_status, client_created_at, urgency',
+      pending_mutations: '++id, entity, operation, record_id, created_at',
+      audio_files: 'id, created_at, uploaded_at'
+    })
+
+    this.version(5).stores({
+      events: 'id, event_code, name, cached_at',
+      requests: '++local_id, id, sync_status, client_created_at, urgency, *departments',
       pending_mutations: '++id, entity, operation, record_id, created_at',
       audio_files: 'id, created_at, uploaded_at'
     })

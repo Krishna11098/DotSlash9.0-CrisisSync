@@ -11,9 +11,8 @@ type Props = {
 const initialStatus: SyncStatusSnapshot = {
   isOnline: true,
   isSyncing: false,
-  pendingLeadCount: 0,
-  errorLeadCount: 0,
-  pendingMutationCount: 0,
+  pendingRequestCount: 0,
+  errorRequestCount: 0,
 };
 
 export default function SyncStatusIndicator({ compact = false }: Props) {
@@ -48,7 +47,7 @@ export default function SyncStatusIndicator({ compact = false }: Props) {
     };
   }, []);
 
-  const totalPending = status.pendingLeadCount + status.pendingMutationCount;
+  const totalPending = status.pendingRequestCount;
 
   const view = useMemo(() => {
     if (!status.isOnline) {
@@ -65,9 +64,9 @@ export default function SyncStatusIndicator({ compact = false }: Props) {
       };
     }
 
-    if (status.errorLeadCount > 0) {
+    if (status.errorRequestCount > 0) {
       return {
-        text: `Sync Error (${status.errorLeadCount})`,
+        text: `Sync Error (${status.errorRequestCount})`,
         className: "bg-red-100 text-red-700 border-red-300",
       };
     }
@@ -83,7 +82,7 @@ export default function SyncStatusIndicator({ compact = false }: Props) {
       text: "Synced",
       className: "bg-green-100 text-green-700 border-green-300",
     };
-  }, [status.errorLeadCount, status.isOnline, status.isSyncing, totalPending]);
+  }, [status.errorRequestCount, status.isOnline, status.isSyncing, totalPending]);
 
   return (
     <Badge variant="outline" className={`px-3 py-1 ${view.className}`}>

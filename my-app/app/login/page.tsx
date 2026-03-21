@@ -17,7 +17,7 @@ export default function LoginPage() {
     // Redirect if already logged in
     useEffect(() => {
         if (user) {
-            router.push('/')
+            router.push('/dashboard')
         }
     }, [user, router])
 
@@ -32,7 +32,7 @@ export default function LoginPage() {
 
         try {
             await signIn(email, password)
-            router.push('/')
+            router.push('/dashboard')
         } catch (err) {
             let message = 'Failed to sign in'
             if (err instanceof Error) message = err.message

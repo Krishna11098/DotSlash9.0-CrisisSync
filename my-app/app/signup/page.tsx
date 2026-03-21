@@ -4,7 +4,7 @@ import { useAuth } from '@/app/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { Mail, Lock, User, AlertCircle, CheckCircle } from 'lucide-react'
+import { Mail, Lock, User, AlertCircle, CheckCircle, MapPin, Shield } from 'lucide-react'
 
 export default function SignUpPage() {
     const { signUp, user } = useAuth()
@@ -12,6 +12,10 @@ export default function SignUpPage() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [fullName, setFullName] = useState('')
+    const [role, setRole] = useState<'citizen' | 'gov_employee'>('citizen')
+    const [govSubRole, setGovSubRole] = useState('')
+    const [latitude, setLatitude] = useState<number | null>(null)
+    const [longitude, setLongitude] = useState<number | null>(null)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
     const [loading, setLoading] = useState(false)
@@ -46,8 +50,20 @@ export default function SignUpPage() {
             return
         }
 
+        if (role === 'gov_employee' && (latitude === null || longitude === null)) {
+            setError('Location is required for government employees')
+            setLoading(false)
+            return
+        }
+
+        if (role === 'gov_employee' && !govSubRole.trim()) {
+            setError('Sector is required for government employees')
+            setLoading(false)
+            return
+        }
+
         try {
-            await signUp(email, password, fullName)
+            await signUp(email, password, fullName, role, latitude || undefined, longitude || undefined, govSubRole)
             setSuccess('Account created successfully! Redirecting to login...')
             setTimeout(() => {
                 router.push('/login')
@@ -112,6 +128,96 @@ export default function SignUpPage() {
                                 />
                             </div>
                         </div>
+
+                        {/* Role Selection */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Role
+                            </label>
+                            <div className="flex space-x-4">
+                                <label className="flex-1">
+                                    <input 
+                                        type="radio" 
+                                        name="role" 
+                                        value="citizen" 
+                                        checked={role === 'citizen'}
+                                        onChange={() => setRole('citizen')}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="p-3 text-center border rounded-lg cursor-pointer peer-checked:border-blue-600 peer-checked:bg-blue-50 hover:bg-gray-50 flex flex-col items-center">
+                                        <User size={24} className={role === 'citizen' ? 'text-blue-600' : 'text-gray-400'} />
+                                        <span className="mt-1 text-sm font-medium">Citizen</span>
+                                    </div>
+                                </label>
+                                <label className="flex-1">
+                                    <input 
+                                        type="radio" 
+                                        name="role" 
+                                        value="gov_employee" 
+                                        checked={role === 'gov_employee'}
+                                        onChange={() => setRole('gov_employee')}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="p-3 text-center border rounded-lg cursor-pointer peer-checked:border-blue-600 peer-checked:bg-blue-50 hover:bg-gray-50 flex flex-col items-center">
+                                        <Shield size={24} className={role === 'gov_employee' ? 'text-blue-600' : 'text-gray-400'} />
+                                        <span className="mt-1 text-sm font-medium">Gov Employee</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Location (Gov Employee Only) */}
+                        {role === 'gov_employee' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Government Sector
+                                </label>
+                                <div className="relative mb-3">
+                                    <Shield className="absolute left-3 top-3 text-gray-400" size={20} />
+                                    <input
+                                        type="text"
+                                        value={govSubRole}
+                                        onChange={(e) => setGovSubRole(e.target.value)}
+                                        required
+                                        placeholder="e.g., Health, Police, Fire, Municipal"
+                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                                    />
+                                </div>
+
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Current Location
+                                </label>
+                                {latitude && longitude ? (
+                                    <div className="flex items-center space-x-2 text-sm text-green-600 bg-green-50 p-2 rounded">
+                                        <CheckCircle size={16} />
+                                        <span>Location captured ({latitude.toFixed(4)}, {longitude.toFixed(4)})</span>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (navigator.geolocation) {
+                                                navigator.geolocation.getCurrentPosition(
+                                                    (position) => {
+                                                        setLatitude(position.coords.latitude)
+                                                        setLongitude(position.coords.longitude)
+                                                    },
+                                                    (err) => {
+                                                        setError('Failed to get location. Please enable location services.')
+                                                    }
+                                                )
+                                            } else {
+                                                setError('Geolocation is not supported by your browser')
+                                            }
+                                        }}
+                                        className="w-full flex items-center justify-center space-x-2 border border-gray-300 rounded-lg py-2 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm"
+                                    >
+                                        <MapPin size={16} className="text-gray-500" />
+                                        <span>Get Current Location</span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
                         {/* Password */}
                         <div>

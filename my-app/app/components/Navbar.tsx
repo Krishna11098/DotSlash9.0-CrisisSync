@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/app/contexts/AuthContext'
-import { LogOut, Menu, X, Download, LayoutDashboard, Users, Calendar, BarChart3, UserPlus, ClipboardList, Sparkles } from 'lucide-react'
+import { LogOut, Menu, X, Download, LayoutDashboard, ClipboardList, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 
 export function Navbar() {
@@ -25,9 +25,7 @@ export function Navbar() {
 
   const navLinks = [
     { href: '/', label: 'Home', icon: LayoutDashboard },
-    { href: '/capture', label: 'Capture Lead', icon: UserPlus, authRequired: true },
-    { href: '/tab', label: 'Lead Form', icon: ClipboardList, authRequired: true },
-    { href: '/staff', label: 'Staff Entry', icon: Users, authRequired: true },
+    { href: '/dashboard', label: 'Submit Request', icon: ClipboardList, authRequired: true },
   ]
 
   return (
