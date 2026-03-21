@@ -846,8 +846,14 @@ function calculateCategoryPriority(
 function analyzeSeverity(objects: string[], text: string): "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" {
   const textLower = text.toLowerCase();
   
+  console.log(`\n🔍 [analyzeSeverity] START`);
+  console.log(`   Text: "${text.substring(0, 100)}..."`);
+  console.log(`   Objects: [${objects.join(", ") || "none"}]`);
+  
   // Check for critical indicators
   if (CRITICAL_KEYWORDS.some(kw => textLower.includes(kw) || objects.includes(kw))) {
+    console.log(`   ✅ Found CRITICAL keyword`);
+    console.log(`🔍 [analyzeSeverity] RESULT: CRITICAL\n`);
     return "CRITICAL";
   }
   
@@ -858,6 +864,8 @@ function analyzeSeverity(objects: string[], text: string): "LOW" | "MEDIUM" | "H
     textLower.includes("accident") ||
     objects.includes("fire")
   ) {
+    console.log(`   ✅ Found HIGH keyword`);
+    console.log(`🔍 [analyzeSeverity] RESULT: HIGH\n`);
     return "HIGH";
   }
   
@@ -869,9 +877,13 @@ function analyzeSeverity(objects: string[], text: string): "LOW" | "MEDIUM" | "H
     objects.includes("car") ||
     objects.includes("vehicle")
   ) {
+    console.log(`   ✅ Found MEDIUM keyword`);
+    console.log(`🔍 [analyzeSeverity] RESULT: MEDIUM\n`);
     return "MEDIUM";
   }
   
+  console.log(`   ℹ️ No keywords matched, defaulting to LOW`);
+  console.log(`🔍 [analyzeSeverity] RESULT: LOW\n`);
   return "LOW";
 }
 
@@ -879,59 +891,97 @@ function analyzeSeverity(objects: string[], text: string): "LOW" | "MEDIUM" | "H
  * Main Priority Engine: Combines all signals into final priority with department routing
  */
 export function calculatePriority(input: PrioritizationInput): PrioritizationOutput {
+  console.log(`\n${"=".repeat(60)}`);
+  console.log(`🎯 PRIORITY CALCULATION START`);
+  console.log(`${"=".repeat(60)}`);
+  
   // Classify incident into category with confidence
+  console.log(`\n📍 STEP 1: Category Classification`);
   const { category, confidence: classificationConfidence } = classifyEmergencyCategory(
     input.location,
     input.detected_hazards
   );
+  console.log(`   Category: ${category}`);
+  console.log(`   Classification Confidence: ${(classificationConfidence * 100).toFixed(1)}%`);
   
   const { department_priority, urgency_multiplier } = calculateCategoryPriority(
     category,
     input.issue_severity,
     input.location
   );
+  console.log(`   Department Priority: ${department_priority}`);
+  console.log(`   Urgency Multiplier: ${urgency_multiplier}x`);
 
   // Get base score for this category
   const categoryBaseScore = CATEGORY_BASE_SCORES[category];
+  console.log(`   Category Base Score: ${(categoryBaseScore * 100).toFixed(0)}%`);
 
   let baseScore = 0;
 
   // 1️⃣ Severity Multiplier
+  console.log(`\n📊 STEP 2: Calculate Base Score Components`);
   const severityScores: Record<string, number> = {
     LOW: 10,
     MEDIUM: 30,
     HIGH: 60,
     CRITICAL: 100,
   };
-  baseScore += severityScores[input.issue_severity] || 30;
+  const severityPoints = severityScores[input.issue_severity] || 30;
+  baseScore += severityPoints;
+  console.log(`   1️⃣ Severity (${input.issue_severity}): +${severityPoints} points`);
 
   // 2️⃣ Crowd Count (urgency indicator)
-  baseScore += Math.min(input.crowd_count * 2, 20);
+  const crowdPoints = Math.min(input.crowd_count * 2, 20);
+  baseScore += crowdPoints;
+  console.log(`   2️⃣ Crowd Count (${input.crowd_count}): +${crowdPoints} points (max 20)`);
 
   // 3️⃣ Critical Location Bonus
+  const locationPoints = input.is_critical_location ? 15 : 0;
   if (input.is_critical_location) {
     baseScore += 15;
   }
+  console.log(`   3️⃣ Critical Location: +${locationPoints} points`);
 
   // 4️⃣ Report Count (community validation)
-  baseScore += Math.min(input.num_reports * 3, 15);
+  const reportPoints = Math.min(input.num_reports * 3, 15);
+  baseScore += reportPoints;
+  console.log(`   4️⃣ Report Count (${input.num_reports}): +${reportPoints} points (max 15)`);
+
+  console.log(`   Subtotal before credibility: ${baseScore.toFixed(1)}`);
 
   // 5️⃣ Credibility Checks
+  console.log(`\n📊 STEP 3: Apply Credibility Multiplier`);
+  console.log(`   Text Credibility: ${(input.text_credibility * 100).toFixed(1)}% → ${input.text_credibility * 30} points`);
+  console.log(`   Image-Text Match: ${(input.image_text_match * 100).toFixed(1)}% → ${input.image_text_match * 20} points`);
+  console.log(`   Image Quality: ${((1 - input.fake_score) * 100).toFixed(1)}% → ${(1 - input.fake_score) * 20} points`);
+  
   const credibilityScore = 
     (input.text_credibility * 30) + 
     (input.image_text_match * 20) + 
     ((1 - input.fake_score) * 20);
+  const credibilityMultiplier = credibilityScore / 70;
   
-  baseScore = baseScore * (credibilityScore / 70);
+  console.log(`   Total Credibility Points: ${credibilityScore.toFixed(1)}/70`);
+  console.log(`   Credibility Multiplier: ${credibilityMultiplier.toFixed(2)}x`);
+  
+  baseScore = baseScore * credibilityMultiplier;
+  console.log(`   Score after credibility: ${baseScore.toFixed(1)}`);
 
   // 6️⃣ Apply category-specific urgency multiplier
+  console.log(`\n📊 STEP 4: Apply Department Urgency Multiplier`);
+  console.log(`   Multiplier: ${urgency_multiplier}x`);
   baseScore = baseScore * urgency_multiplier;
+  console.log(`   Score after urgency: ${baseScore.toFixed(1)}`);
 
   // 7️⃣ Apply category confidence multiplier (boosts score if classification is confident)
+  console.log(`\n📊 STEP 5: Apply Classification Confidence`);
+  console.log(`   Confidence: ${(classificationConfidence * 100).toFixed(1)}% (${classificationConfidence.toFixed(2)}x)`);
   baseScore = baseScore * classificationConfidence;
+  console.log(`   Score after confidence: ${baseScore.toFixed(1)}`);
 
   // Cap at 100
   baseScore = Math.min(Math.max(baseScore, 0), 100);
+  console.log(`   Score capped at 0-100: ${baseScore.toFixed(1)}`);
 
   // Determine priority level
   let priorityLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -951,14 +1001,18 @@ export function calculatePriority(input: PrioritizationInput): PrioritizationOut
     urgencySeconds = 3600; // 1 hour
   }
 
-  console.log(`📊 Priority Calculation: Category=${category} (${(categoryBaseScore * 100).toFixed(0)}%), Confidence=${(classificationConfidence * 100).toFixed(1)}%, Score=${Math.round(baseScore)}, Level=${priorityLevel}`);
+  console.log(`\n✅ FINAL RESULT:`);
+  console.log(`   Priority Score: ${Math.round(baseScore)}/100`);
+  console.log(`   Priority Level: ${priorityLevel}`);
+  console.log(`   Response Time: ${urgencySeconds}s`);
+  console.log(`${"=".repeat(60)}\n`);
 
   return {
     priority_level: priorityLevel,
     priority_score: Math.round(baseScore),
     department: category,
     department_priority,
-    department_confidence: categoryBaseScore, // Add the base category confidence
+    department_confidence: categoryBaseScore,
     recommendation: getRecommendation(priorityLevel, category, department_priority, input),
     estimated_urgency_seconds: urgencySeconds,
   };
@@ -1045,7 +1099,9 @@ export async function processSubmission(
   const confidence = isFake ? 0 : baseConfidence;  // Zero confidence if flagged
 
   // Step 5: Analyze Severity (if not fake)
+  console.log(`\n📊 [processSubmission] Analyzing Severity...`);
   const severity = analyzeSeverity(detectedObjects, finalTextDescription);
+  console.log(`📊 [processSubmission] Severity Result: ${severity}`);
 
   // Build verification result
   const verification: VerificationResult = {
@@ -1095,7 +1151,22 @@ export async function processSubmission(
       detected_hazards: detectedObjects,
     };
 
+    console.log(`\n[processSubmission] Priority Input:`);
+    console.log(`  - severity: ${priorityInput.issue_severity}`);
+    console.log(`  - crowd_count: ${priorityInput.crowd_count}`);
+    console.log(`  - is_critical_location: ${priorityInput.is_critical_location}`);
+    console.log(`  - num_reports: ${priorityInput.num_reports}`);
+    console.log(`  - fake_score: ${priorityInput.fake_score.toFixed(3)}`);
+    console.log(`  - text_credibility: ${priorityInput.text_credibility.toFixed(3)}`);
+    console.log(`  - image_text_match: ${priorityInput.image_text_match.toFixed(3)}`);
+    console.log(`  - detected_hazards: [${priorityInput.detected_hazards.join(", ")}]`);
+    
     priority = calculatePriority(priorityInput);
+    
+    console.log(`[processSubmission] Priority Output:`);
+    console.log(`  - priority_score: ${priority.priority_score}`);
+    console.log(`  - priority_level: ${priority.priority_level}`);
+    console.log(`  - department: ${priority.department}`);
   }
 
   // Final decision

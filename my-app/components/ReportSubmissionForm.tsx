@@ -18,7 +18,17 @@ export function ReportSubmissionForm() {
     audio: "",
     location: "",
     report_count: 1,
+    departments: [] as string[], // Selected departments
   });
+
+  const departments = ["hospital", "fire", "police", "municipal corporation"];
+  
+  // Calculate how many input fields are filled (must be 1-3)
+  const filledFieldCount = [
+    !!formData.image,
+    !!formData.text_description,
+    !!formData.audio,
+  ].filter(Boolean).length;
 
   const [state, setState] = useState<SubmissionState>({
     loading: false,
@@ -202,10 +212,16 @@ export function ReportSubmissionForm() {
     setState({ loading: true, submitted: false });
 
     try {
-      const response = await fetch("/api/verify-report", {
+      const response = await fetch("/api/submit-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          // Map department UI names to database values
+          departments: formData.departments.map(dept => 
+            dept === "municipal corporation" ? "municipal corporation" : dept
+          ),
+        }),
       });
 
       const apiResult = await response.json();
@@ -227,6 +243,7 @@ export function ReportSubmissionForm() {
         audio: "",
         location: "",
         report_count: 1,
+        departments: [],
       });
       setAudioTranscription("");
       setRecordingTime(0);
@@ -429,6 +446,41 @@ export function ReportSubmissionForm() {
           />
         </div>
 
+        {/* Department Selection */}
+        <div>
+          <label className="block text-sm font-medium text-zinc-700 mb-3">
+            🏢 Select Department(s) to Route Request
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            {departments.map((dept) => (
+              <label key={dept} className="flex items-center gap-2 p-3 border border-zinc-300 rounded-lg hover:bg-blue-50 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={formData.departments.includes(dept)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setFormData({
+                        ...formData,
+                        departments: [...formData.departments, dept],
+                      });
+                    } else {
+                      setFormData({
+                        ...formData,
+                        departments: formData.departments.filter((d) => d !== dept),
+                      });
+                    }
+                  }}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm font-medium text-zinc-700 capitalize">{dept}</span>
+              </label>
+            ))}
+          </div>
+          {formData.departments.length === 0 && (
+            <p className="text-sm text-red-600 mt-2">⚠️ Select at least one department</p>
+          )}
+        </div>
+
         {/* Error Message */}
         {state.error && (
           <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
@@ -436,12 +488,36 @@ export function ReportSubmissionForm() {
           </div>
         )}
 
+        {/* Validation Messages */}
+        {filledFieldCount === 0 && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
+            ⚠️ Please fill at least one of: image, description, or audio
+          </div>
+        )}
+        {filledFieldCount > 3 && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
+            ⚠️ Please fill at most 3 of: image, description, or audio
+          </div>
+        )}
+        {formData.departments.length === 0 && filledFieldCount > 0 && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
+            ⚠️ Please select at least one department for routing
+          </div>
+        )}
+
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={state.loading || !formData.image || !formData.text_description}
+          disabled={
+            state.loading ||
+            filledFieldCount < 1 ||
+            filledFieldCount > 3 ||
+            formData.departments.length === 0
+          }
           className={`w-full py-3 px-4 rounded-lg font-semibold text-white transition-colors ${
             state.loading
+              ? "bg-zinc-400 cursor-not-allowed"
+              : filledFieldCount < 1 || filledFieldCount > 3 || formData.departments.length === 0
               ? "bg-zinc-400 cursor-not-allowed"
               : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
           }`}

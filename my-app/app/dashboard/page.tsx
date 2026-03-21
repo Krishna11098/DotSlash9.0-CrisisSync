@@ -97,6 +97,55 @@ export default function CitizenDashboard() {
     loadProfile()
   }, [user, router])
 
+  // Fetch and log user's recent requests
+  useEffect(() => {
+    const fetchUserRequests = async () => {
+      if (!user) return;
+      
+      try {
+        console.log(`\n📋 [Dashboard] Fetching requests for user: ${user.id}`);
+        
+        const { data, error } = await supabase
+          .from('requests')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('client_created_at', { ascending: false })
+          .limit(10);
+
+        if (error) {
+          console.error(`❌ [Dashboard] Error fetching requests:`, error);
+          return;
+        }
+
+        console.log(`✅ [Dashboard] Fetched ${data?.length || 0} requests:`);
+        if (data && data.length > 0) {
+          data.forEach((req: any, idx: number) => {
+            console.log(`\n   Request ${idx + 1}:`);
+            console.log(`     - ID: ${req.id}`);
+            console.log(`     - Priority Number: ${req.priority_number}`);
+            console.log(`     - Status: ${req.status}`);
+            console.log(`     - Urgency: ${req.urgency}`);
+            console.log(`     - Time Limit: ${req.time_limit_minutes}m`);
+            console.log(`     - Departments: [${req.departments?.join(", ")}]`);
+            console.log(`     - Topic: "${req.topic.substring(0, 50)}..."`);
+            console.log(`     - Created: ${new Date(req.client_created_at).toLocaleString()}`);
+          });
+        } else {
+          console.log(`   No requests found`);
+        }
+        console.log(``);
+      } catch (err) {
+        console.error(`❌ [Dashboard] Exception while fetching requests:`, err);
+      }
+    };
+
+    fetchUserRequests();
+    
+    // Re-fetch every 10 seconds
+    const interval = setInterval(fetchUserRequests, 10000);
+    return () => clearInterval(interval);
+  }, [user])
+
   const getLocation = () => {
     if (navigator.geolocation) {
       setLocationLoading(true)
