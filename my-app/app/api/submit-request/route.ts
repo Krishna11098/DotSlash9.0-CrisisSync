@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { processSubmission } from "@/lib/report-pipeline";
 import { FinalResponse } from "@/lib/report-types";
+import { makeEmergencyCall } from "@/lib/twilio-voice";
 
 /**
  * POST /api/submit-request
@@ -145,6 +146,21 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`⏱️ [submit-request] Urgency: ${urgency}, Time limit: ${timeLimitMinutes}m`);
+
+    // ========================================================================
+    // STEP 4.5: Trigger Twilio Emergency Call if Priority > 85
+    // ========================================================================
+    if (priorityScore > 85) {
+      console.log(`📞 [submit-request] Priority > 85 (${priorityScore}), triggering Twilio Emergency Call...`);
+      // Use verification result department directly or first user selected department
+      const deptForCall = verificationResult.priority.department || body.departments[0];
+      
+      // Async without await so we don't block the database save entirely, 
+      // though await here is fine since Next.js edge functions allow it. Wait, standard Node allows it too.
+      // Awaiting avoids Next.js serverless functions unmounting before the fetch completes natively.
+      await makeEmergencyCall(deptForCall, priorityScore, urgency)
+        .catch(err => console.error("Failed to make emergency call", err));
+    }
 
     // ========================================================================
     // STEP 5: Save request to database
