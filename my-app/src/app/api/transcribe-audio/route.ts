@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 /**
  * 🎙️ API Route: /api/transcribe-audio
  * 
- * POST endpoint for transcribing audio to text using AssemblyAI
+ * POST endpoint for transcribing audio to text using Deepgram
  * Takes base64-encoded audio and returns transcribed text
  */
 export async function POST(request: NextRequest) {
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     const audio = body.audio;
-    console.log("🎙️ Transcribing audio...");
+    console.log("🎙️ Transcribing audio with Deepgram...");
     console.log("Audio data length:", audio?.length || 0);
 
     // Extract base64 without data URL prefix
@@ -40,41 +40,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 1: Upload audio to AssemblyAI
-    console.log("📤 Uploading audio to AssemblyAI...");
-    
-    const assemblyAIKey = process.env.ASSEMBLYAI_API_KEY || "";
+    // Get Deepgram API key
+    const deepgramKey = process.env.DEEPGRAM_API_KEY || "";
 
-    if (!assemblyAIKey) {
-      console.error("❌ ASSEMBLYAI_API_KEY is not configured");
+    if (!deepgramKey) {
+      console.error("❌ DEEPGRAM_API_KEY is not configured");
       return NextResponse.json(
-        { error: "AssemblyAI API key not configured" },
+        { error: "Deepgram API key not configured" },
         { status: 500 }
       );
     }
 
-    console.log("🔑 API Key (first 10 chars):", assemblyAIKey.substring(0, 10) + "...");
-    console.log("🔑 API Key length:", assemblyAIKey.length);
+    console.log("🔑 API Key (first 10 chars):", deepgramKey.substring(0, 10) + "...");
 
-    // Send binary audio data directly to AssemblyAI upload endpoint
-    const uploadResponse = await fetch(
-      "https://api.assemblyai.com/v2/upload",
+    // Send audio directly to Deepgram
+    console.log("📤 Sending audio to Deepgram for transcription...");
+    
+    const deepgramResponse = await fetch(
+      "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true",
       {
         method: "POST",
         headers: {
-          Authorization: assemblyAIKey,
+          Authorization: `Token ${deepgramKey}`,
           "Content-Type": "application/octet-stream",
         },
         body: audioBuffer,
       }
     );
 
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      console.error(`❌ AssemblyAI upload error: ${uploadResponse.status}`);
+    if (!deepgramResponse.ok) {
+      const errorText = await deepgramResponse.text();
+      console.error(`❌ Deepgram error: ${deepgramResponse.status}`);
       console.error("Error response:", errorText);
       
-      // Try to parse as JSON
       let errorMessage = errorText;
       try {
         const errorJson = JSON.parse(errorText);
@@ -84,120 +82,32 @@ export async function POST(request: NextRequest) {
       }
       
       return NextResponse.json(
-        { error: `Upload failed: ${uploadResponse.status} - ${errorMessage}` },
+        { error: `Transcription failed: ${deepgramResponse.status} - ${errorMessage}` },
         { status: 500 }
       );
     }
 
-    const uploadData = await uploadResponse.json() as { upload_url: string };
-    const audioUrl = uploadData.upload_url;
-
-    console.log("✅ Audio uploaded. Requesting transcription...");
-    console.log("Audio URL:", audioUrl);
-
-    if (!audioUrl) {
-      console.error("❌ No audio URL returned from AssemblyAI upload");
-      return NextResponse.json(
-        { error: "Upload succeeded but no URL returned" },
-        { status: 500 }
-      );
-    }
-
-    // Step 2: Request transcription
-    const transcriptPayload = {
-      audio_url: audioUrl,
+    const response = await deepgramResponse.json() as {
+      results?: {
+        channels?: Array<{
+          alternatives?: Array<{
+            transcript?: string;
+          }>;
+        }>;
+      };
     };
 
-    console.log("📤 Sending transcription request with payload:", transcriptPayload);
+    const transcript = response.results?.channels?.[0]?.alternatives?.[0]?.transcript || "";
 
-    const transcriptResponse = await fetch(
-      "https://api.assemblyai.com/v2/transcript",
-      {
-        method: "POST",
-        headers: {
-          Authorization: assemblyAIKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(transcriptPayload),
-      }
-    );
-
-    if (!transcriptResponse.ok) {
-      const errorText = await transcriptResponse.text();
-      console.error(`❌ AssemblyAI transcription error: ${transcriptResponse.status}`);
-      console.error("Error details:", errorText);
-      
-      let errorMessage = errorText;
-      try {
-        const errorJson = JSON.parse(errorText);
-        console.error("Parsed error JSON:", errorJson);
-        errorMessage = JSON.stringify(errorJson);
-      } catch (e) {
-        // Keep as text
-      }
-      
+    if (!transcript) {
+      console.warn("⚠️ No transcript returned from Deepgram");
       return NextResponse.json(
-        { error: `Transcription request failed: ${transcriptResponse.status} - ${errorMessage}` },
+        { error: "No transcript returned from Deepgram" },
         { status: 500 }
       );
     }
 
-    const transcriptData = await transcriptResponse.json() as { id: string };
-    const transcriptId = transcriptData.id;
-
-    console.log(`📝 Transcription requested (ID: ${transcriptId})`);
-
-    // Step 3: Poll for transcription result
-    let transcript = "";
-    let attempts = 0;
-    const maxAttempts = 120; // Max 2 minutes (1 second per poll)
-
-    while (attempts < maxAttempts) {
-      const pollResponse = await fetch(
-        `https://api.assemblyai.com/v2/transcript/${transcriptId}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: assemblyAIKey,
-          },
-        }
-      );
-
-      if (!pollResponse.ok) {
-        console.error(`❌ Poll error: ${pollResponse.status}`);
-        break;
-      }
-
-      const pollData = await pollResponse.json() as {
-        status: string;
-        text?: string;
-      };
-
-      if (pollData.status === "completed") {
-        transcript = pollData.text || "";
-        console.log(`✅ Transcription complete: "${transcript.substring(0, 100)}..."`);
-        break;
-      }
-
-      if (pollData.status === "error") {
-        console.error("❌ Transcription failed");
-        break;
-      }
-
-      // Wait 1 second before next poll
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      attempts++;
-
-      // Log progress every 10 attempts
-      if (attempts % 10 === 0) {
-        console.log(`⏳ Still transcribing... (${attempts}s)`);
-      }
-    }
-
-    if (attempts >= maxAttempts) {
-      console.warn("⚠️ Transcription polling timeout");
-      transcript = "Transcription timeout - audio may be too long";
-    }
+    console.log(`✅ Transcription complete: "${transcript.substring(0, 100)}..."`);
 
     return NextResponse.json(
       {
@@ -206,6 +116,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     );
+
   } catch (error) {
     console.error("❌ Transcription error:", error);
     
