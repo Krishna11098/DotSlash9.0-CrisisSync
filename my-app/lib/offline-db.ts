@@ -44,7 +44,12 @@ export type OfflineRequest = {
   status: string;
   client_created_at: string;
   sync_status: SyncStatus;
-}
+  // NEW: Priority Engine Fields
+  priority_score?: number; // 0-100 calculated score
+  priority_level?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'; // Calculated priority level
+  detected_category?: 'Hospital' | 'Fire' | 'Municipal' | 'Police'; // Auto-detected category
+  category_confidence?: number; // 0-1 confidence
+};
 
 export type OfflineAudioFile = {
   id: string

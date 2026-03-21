@@ -7,6 +7,7 @@ import { saveRequestOffline } from '@/lib/offline-sync'
 import { supabase } from '@/lib/supabase'
 import { uploadAudioBlobToCloudinary } from '@/lib/audio-storage'
 import { saveAudioBlobLocally } from '@/lib/audio-storage'
+import { calculatePriorityScore, autoDetectDepartment, getUrgencyFromScore } from '@/lib/priority-engine'
 import ProtectedLayout from '@/app/components/ProtectedLayout'
 import SyncStatusIndicator from '@/app/components/SyncStatusIndicator'
 import {
@@ -224,25 +225,43 @@ export default function CitizenDashboard() {
       return
     }
 
-    if (departments.length === 0) {
-      setMessage({ text: 'Select at least one department', type: 'error' })
-      return
-    }
-
-    if ((urgency === 'urgent' || urgency === 'emergency') && !timeLimit) {
-      setMessage({ text: 'Time Limit is required for urgent/emergency requests', type: 'error' })
-      return
-    }
-
-    if ((urgency === 'urgent' || urgency === 'emergency') && Number(timeLimit) <= 0) {
-      setMessage({ text: 'Time Limit must be greater than 0', type: 'error' })
-      return
-    }
-
     setLoading(true)
     setMessage({ text: '', type: '' })
 
     try {
+      // ===== PRIORITY ENGINE: Calculate priority from description =====
+      console.log('🚀 Invoking Priority Engine...')
+      const priorityResult = calculatePriorityScore(topic || '', urgency)
+      console.log('✅ Priority calculated:', priorityResult)
+
+      // Auto-detect department if none selected
+      let finalDepartments = departments
+      if (finalDepartments.length === 0 && topic.trim()) {
+        const detectedDept = autoDetectDepartment(topic)
+        finalDepartments = [detectedDept]
+        console.log(`🏷️ Auto-detected department: ${detectedDept}`)
+        setMessage({ 
+          text: `Auto-detected: ${detectedDept.toUpperCase()} | Priority: ${priorityResult.priority_level}`, 
+          type: 'success' 
+        })
+      }
+
+      if (finalDepartments.length === 0) {
+        setMessage({ text: 'Select at least one department or provide a description for auto-detection', type: 'error' })
+        setLoading(false)
+        return
+      }
+
+      // Auto-set urgency based on priority score
+      const calculatedUrgency = getUrgencyFromScore(priorityResult.priority_score)
+
+      if ((calculatedUrgency === 'urgent' || calculatedUrgency === 'emergency') && !timeLimit) {
+        // Set default time limit based on urgency
+        const defaultTimeLimit = calculatedUrgency === 'emergency' ? '1' : '5'
+        setTimeLimit(defaultTimeLimit)
+        setMessage({ text: `Auto-set urgency to ${calculatedUrgency.toUpperCase()} (${priorityResult.priority_level})`, type: 'info' })
+      }
+
       let imageUrl = null
       let audioUrl = null
 
@@ -279,26 +298,40 @@ export default function CitizenDashboard() {
       console.log('[submit] Saving request offline...')
       await saveRequestOffline({
         topic: topic || '',
-        departments,
-        urgency,
+        departments: finalDepartments,
+        urgency: calculatedUrgency,
         time_limit_minutes: timeLimit ? parseInt(timeLimit) : null,
         latitude,
         longitude,
         image_url: imageUrl,
         audio_url: audioUrl,
         status: 'pending',
+        // Priority engine data
+        priority_score: priorityResult.priority_score,
+        priority_level: priorityResult.priority_level,
+        detected_category: priorityResult.category,
+        category_confidence: priorityResult.confidence,
       })
       console.log('[submit] Request saved successfully')
 
-      setMessage({ text: isOnline ? 'Request submitted successfully!' : 'Request saved offline. It will sync when you reconnect.', type: 'success' })
-      setTopic('')
-      setDepartments([])
-      setTimeLimit('')
-      setLatitude(null)
-      setLongitude(null)
-      setImageFile(null)
-      setImagePreview(null)
-      setAudioBlob(null)
+      // Create URL with all priority data
+      const resultsUrl = new URL('/results', window.location.origin)
+      resultsUrl.searchParams.set('category', priorityResult.category)
+      resultsUrl.searchParams.set('priority_level', priorityResult.priority_level)
+      resultsUrl.searchParams.set('priority_score', priorityResult.priority_score.toString())
+      resultsUrl.searchParams.set('confidence', priorityResult.confidence.toString())
+      resultsUrl.searchParams.set('department_confidence', priorityResult.department_confidence.toString())
+      resultsUrl.searchParams.set('recommendation', priorityResult.recommendation)
+      resultsUrl.searchParams.set('estimated_urgency_seconds', priorityResult.estimated_urgency_seconds.toString())
+      resultsUrl.searchParams.set('reasoning', priorityResult.reasoning)
+      resultsUrl.searchParams.set('description', topic || '')
+      resultsUrl.searchParams.set('urgency', calculatedUrgency)
+      resultsUrl.searchParams.set('location', `${latitude}, ${longitude}`)
+
+      // Redirect to results page
+      setTimeout(() => {
+        router.push(resultsUrl.pathname + resultsUrl.search)
+      }, 500)
     } catch (err: any) {
       console.error('[submit] Error:', err)
       setMessage({ text: err.message || 'Failed to submit request', type: 'error' })
