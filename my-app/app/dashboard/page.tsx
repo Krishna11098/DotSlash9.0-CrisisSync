@@ -62,6 +62,8 @@ export default function CitizenDashboard() {
   const [isRecording, setIsRecording] = useState(false)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [recordingDuration, setRecordingDuration] = useState(0)
+  const [audioTranscription, setAudioTranscription] = useState<string>('')
+  const [isTranscribing, setIsTranscribing] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<BlobPart[]>([])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -218,10 +220,36 @@ export default function CitizenDashboard() {
           }
         }
 
-        mediaRecorder.onstop = () => {
+        mediaRecorder.onstop = async () => {
           const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
           setAudioBlob(blob)
           stream.getTracks().forEach((track) => track.stop())
+          
+          // Transcribe audio after recording
+          setIsTranscribing(true)
+          try {
+            const formData = new FormData()
+            formData.append('audio', blob, 'audio.webm')
+            
+            const response = await fetch('/api/transcribe-audio', {
+              method: 'POST',
+              body: formData
+            })
+            
+            if (response.ok) {
+              const data = await response.json()
+              const transcribedText = data.text || data.transcription || ''
+              setAudioTranscription(transcribedText)
+              console.log('✅ Audio transcribed:', transcribedText)
+            } else {
+              const errorData = await response.json()
+              console.error('❌ Transcription failed:', errorData.error || errorData)
+            }
+            setIsTranscribing(false)
+          } catch (error) {
+            console.error('Transcription error:', error)
+            setIsTranscribing(false)
+          }
         }
 
         mediaRecorder.start()
@@ -635,14 +663,25 @@ export default function CitizenDashboard() {
                 </label>
                 <div className="flex flex-col items-center justify-center h-28">
                   {audioBlob && !isRecording ? (
-                    <div className="flex flex-col items-center gap-2">
+                    <div className="flex flex-col items-center gap-2 w-full">
                       <div className="flex items-center gap-2 text-emerald-600">
                         <CheckCircle size={18} />
                         <span className="text-sm font-medium">Audio recorded</span>
                       </div>
+                      {isTranscribing ? (
+                        <div className="text-xs text-slate-500 italic">Converting speech to text...</div>
+                      ) : audioTranscription ? (
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 w-full">
+                          <p className="text-xs font-semibold text-slate-600 mb-1">📝 Transcription:</p>
+                          <p className="text-sm text-slate-700">{audioTranscription}</p>
+                        </div>
+                      ) : null}
                       <button
                         type="button"
-                        onClick={() => setAudioBlob(null)}
+                        onClick={() => {
+                          setAudioBlob(null)
+                          setAudioTranscription('')
+                        }}
                         className="text-xs text-slate-500 hover:text-red-600 font-medium underline"
                       >
                         Remove
