@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       location: body.location || "",
       report_count: body.report_count || 1,
       coordinates: body.coordinates,
+      user_selected_departments: body.departments, // ✅ Pass user selections for fraud detection
     });
 
     const priorityScore = verificationResult.priority.priority_score;
