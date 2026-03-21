@@ -10,6 +10,7 @@ import { saveAudioBlobLocally } from '@/lib/audio-storage'
 import { SubmissionRequest, FinalResponse, VerificationResult, PrioritizationOutput } from '@/lib/report-types'
 import ProtectedLayout from '@/app/components/ProtectedLayout'
 import SyncStatusIndicator from '@/app/components/SyncStatusIndicator'
+import GovEmployeeDashboard from '@/components/GovEmployeeDashboard'
 import {
   AlertCircle,
   CheckCircle,
@@ -423,25 +424,7 @@ export default function CitizenDashboard() {
   }
 
   if (role !== 'citizen') {
-    return (
-      <ProtectedLayout>
-        <div className="min-h-screen flex items-center justify-center px-4">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="w-8 h-8 text-red-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Access Restricted</h2>
-            <p className="text-slate-600 mb-6">Only citizen accounts can submit requests.</p>
-            <button
-              onClick={() => router.push('/')}
-              className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all"
-            >
-              Go Home
-            </button>
-          </div>
-        </div>
-      </ProtectedLayout>
-    )
+    return <GovEmployeeDashboard />
   }
 
   return (

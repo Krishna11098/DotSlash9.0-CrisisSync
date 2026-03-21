@@ -194,17 +194,35 @@ export async function POST(request: NextRequest) {
     console.log(`✅ [submit-request] Request created: ${requestId}`);
 
     // ========================================================================
-    // STEP 6: Route to gov employees for each department
+    // STEP 6: Helper function to calculate distance between coordinates
+    // ========================================================================
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371; // Earth's radius in km
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c; // Distance in km
+    };
+
+    // ========================================================================
+    // STEP 6: Route to nearest 3 gov employees for each department
     // ========================================================================
     const assignments = [];
+    const requestLat = body.coordinates?.lat || 0;
+    const requestLon = body.coordinates?.lng || 0;
+
+    console.log(`📍 [submit-request] Request coordinates: ${requestLat}, ${requestLon}`);
 
     for (const department of body.departments) {
-      console.log(`🔍 [submit-request] Finding employees for department: ${department}`);
+      console.log(`🔍 [submit-request] Finding nearest employees for department: ${department}`);
 
-      // Query gov_employees with matching gov_sub_role
+      // Query gov_employees with matching gov_sub_role and their coordinates
       const { data: employees, error: queryError } = await supabase
         .from("users2")
-        .select("id, name, email")
+        .select("id, name, email, latitude, longitude")
         .eq("role", "gov_employee")
         .eq("gov_sub_role", department);
 
@@ -215,47 +233,71 @@ export async function POST(request: NextRequest) {
 
       console.log(`📍 [submit-request] Found ${employees?.length || 0} employees for ${department}`);
 
-      // Create assignments for each employee
       if (employees && employees.length > 0) {
-        const assignmentsToCreate = employees.map((emp: any) => ({
-          request_id: requestId,
-          assigned_to_user_id: emp.id,
-          department,
-        }));
+        // Calculate distances and sort by nearest
+        const employeesWithDistance = employees
+          .map((emp: any) => {
+            const lat = emp.latitude ? parseFloat(emp.latitude.toString()) : 0;
+            const lon = emp.longitude ? parseFloat(emp.longitude.toString()) : 0;
+            const distance = calculateDistance(requestLat, requestLon, lat, lon);
+            return {
+              ...emp,
+              distance,
+            };
+          })
+          .sort((a: any, b: any) => a.distance - b.distance);
 
-        const { data: createdAssignments, error: assignmentError } = await supabase
-          .from("request_assignments")
-          .insert(assignmentsToCreate)
-          .select();
+        // Get top 3 nearest (or fewer if not available)
+        const nearestEmployees = employeesWithDistance.slice(0, 3);
 
-        if (assignmentError) {
-          console.error(`❌ [submit-request] Assignment error for ${department}:`, assignmentError);
-          continue;
-        }
+        console.log(`📍 [submit-request] Top ${nearestEmployees.length} nearest employees for ${department}:`);
+        nearestEmployees.forEach((emp: any, idx: number) => {
+          console.log(`   ${idx + 1}. ${emp.name} (${emp.email}) - ${emp.distance.toFixed(2)}km away`);
+        });
 
-        console.log(`✅ [submit-request] Created ${createdAssignments?.length || 0} assignments for ${department}`);
-        assignments.push(...(createdAssignments || []));
+        // Create assignments only for nearest employees
+        if (nearestEmployees.length > 0) {
+          const assignmentsToCreate = nearestEmployees.map((emp: any) => ({
+            request_id: requestId,
+            assigned_to_user_id: emp.id,
+            department,
+            distance_km: emp.distance,
+          }));
 
-        // =====================================================================
-        // STEP 7: Create notifications for assigned employees (Optional)
-        // =====================================================================
-        const notificationsToCreate = employees.map((emp: any) => ({
-          user_id: emp.id,
-          request_id: requestId,
-          type: "new_assignment",
-          title: `🚨 New ${urgency.toUpperCase()} Request (Priority: ${priorityScore}/100)`,
-          message: `New incident report assigned to ${department} department. Time limit: ${timeLimitMinutes} minutes.`,
-        }));
+          const { data: createdAssignments, error: assignmentError } = await supabase
+            .from("request_assignments")
+            .insert(assignmentsToCreate)
+            .select();
 
-        const { error: notifError } = await supabase
-          .from("notifications")
-          .insert(notificationsToCreate);
+          if (assignmentError) {
+            console.error(`❌ [submit-request] Assignment error for ${department}:`, assignmentError);
+            continue;
+          }
 
-        if (notifError) {
-          console.error(`⚠️ [submit-request] Notification creation failed for ${department}:`, notifError);
-          // Don't fail the whole request if notifications fail
-        } else {
-          console.log(`📬 [submit-request] Notification sent to ${employees.length} employees`);
+          console.log(`✅ [submit-request] Created ${createdAssignments?.length || 0} assignments for ${department}`);
+          assignments.push(...(createdAssignments || []));
+
+          // =====================================================================
+          // STEP 7: Create notifications for assigned employees
+          // =====================================================================
+          const notificationsToCreate = nearestEmployees.map((emp: any) => ({
+            user_id: emp.id,
+            request_id: requestId,
+            type: "new_assignment",
+            title: `🚨 New ${urgency.toUpperCase()} Request (Priority: ${priorityScore}/100)`,
+            message: `New incident report assigned to ${department} department. Distance: ${emp.distance.toFixed(2)}km. Time limit: ${timeLimitMinutes} minutes.`,
+          }));
+
+          const { error: notifError } = await supabase
+            .from("notifications")
+            .insert(notificationsToCreate);
+
+          if (notifError) {
+            console.error(`⚠️ [submit-request] Notification creation failed for ${department}:`, notifError);
+            // Don't fail the whole request if notifications fail
+          } else {
+            console.log(`📬 [submit-request] Notification sent to ${nearestEmployees.length} employees`);
+          }
         }
       }
     }
