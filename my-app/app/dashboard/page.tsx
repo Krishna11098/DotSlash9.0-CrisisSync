@@ -408,7 +408,7 @@ export default function CitizenDashboard() {
           clip_similarity: 0,
           confidence: 0,
           priority: {
-            priority_level: 'MEDIUM',
+            priority_level: 'PENDING',
             priority_score: 0,
             department: (departments[0] === 'hospital' ? 'Hospital' :
               departments[0] === 'fire' ? 'Fire' :
@@ -419,7 +419,7 @@ export default function CitizenDashboard() {
             estimated_urgency_seconds: 0,
             department_confidence: 0,
           },
-          severity: 'MEDIUM',
+          severity: 'PENDING',
           detected_objects: [],
         })
 
@@ -919,6 +919,7 @@ export default function CitizenDashboard() {
                         submissionResult.priority.priority_level === 'CRITICAL' ? 'text-red-600' :
                         submissionResult.priority.priority_level === 'HIGH' ? 'text-orange-600' :
                         submissionResult.priority.priority_level === 'MEDIUM' ? 'text-amber-600' :
+                        submissionResult.priority.priority_level === 'PENDING' ? 'text-slate-500' :
                         'text-emerald-600'
                       }`}>
                         {submissionResult.priority.priority_level}
@@ -993,6 +994,7 @@ export default function CitizenDashboard() {
                       submissionResult.severity === 'CRITICAL' ? 'text-red-600' :
                       submissionResult.severity === 'HIGH' ? 'text-orange-600' :
                       submissionResult.severity === 'MEDIUM' ? 'text-amber-600' :
+                      submissionResult.severity === 'PENDING' ? 'text-slate-500' :
                       'text-emerald-600'
                     }`}>
                       {submissionResult.severity}

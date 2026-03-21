@@ -5,7 +5,7 @@ export interface VerificationResult {
   text_spam_score: number; // 0 (clean) to 1 (spam/AI-generated)
   clip_similarity: number; // 0-1, how well image matches text description
   detected_objects: string[]; // Objects found in image (fire, water, crowd, etc.)
-  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "PENDING";
   confidence: number; // Overall confidence 0-1
   is_fake: boolean;
   reasoning: string;
@@ -27,7 +27,7 @@ export interface PrioritizationInput {
 }
 
 export interface PrioritizationOutput {
-  priority_level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  priority_level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "PENDING";
   priority_score: number; // 0-100
   recommendation: string;
   estimated_urgency_seconds: number; // How soon authorities should respond
