@@ -28,6 +28,9 @@ export interface PrioritizationOutput {
   priority_score: number; // 0-100
   recommendation: string;
   estimated_urgency_seconds: number; // How soon authorities should respond
+  department: "Hospital" | "Fire" | "Municipal" | "Police"; // Routing department
+  department_priority: string; // Category-specific priority
+  department_confidence: number; // Base confidence for this department (0.98 Hospital, 0.87 Fire, etc.)
 }
 
 export interface SubmissionRequest {

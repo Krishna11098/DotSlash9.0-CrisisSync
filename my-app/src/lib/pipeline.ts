@@ -431,6 +431,165 @@ export async function detectSceneObjects(imageBase64: string): Promise<string[]>
 // 📊 STEP 4: PRIORITY ENGINE (Rules-Based + ML-Ready)
 // ============================================================================
 
+// ===== DEPARTMENT CLASSIFICATION KEYWORDS =====
+
+// ===== BASE CATEGORY PRIORITY SCORES =====
+const CATEGORY_BASE_SCORES = {
+  Hospital: 0.98,  // Highest - Life safety critical
+  Fire: 0.87,      // High - Immediate threat
+  Police: 0.75,    // Medium-High - Public safety
+  Municipal: 0.62, // Medium - Infrastructure
+};
+
+// ===== STRONG INDICATOR KEYWORDS (PRIMARY - weight 5x) =====
+const PRIMARY_KEYWORDS = {
+  Hospital: [
+    "injured",
+    "bleeding",
+    "unconscious",
+    "medical",
+    "ambulance",
+    "hospital",
+  ],
+  Fire: [
+    "fire",
+    "burning",
+    "smoke",
+    "blaze",
+    "flames",
+    "explosion",
+  ],
+  Municipal: [
+    "pothole",
+    "road damage",
+    "water leak",
+    "drainage",
+    "sewer",
+    "streetlight",
+    "street light",
+    "pavement",
+    "broken pipe",
+    "uncovered manhole",
+  ],
+  Police: [
+    "theft",
+    "robbery",
+    "murder",
+    "assault",
+    "rape",
+    "kidnapping",
+    "weapon",
+    "shooting",
+  ],
+};
+
+// ===== SECONDARY KEYWORDS (weight 2x) =====
+const HOSPITAL_KEYWORDS = [
+  "accident",
+  "injury",
+  "pain",
+  "sick",
+  "collapse",
+  "wound",
+  "hurt",
+  "struck",
+  "hit",
+  "knocked",
+  "heart attack",
+  "stroke",
+  "poisoning",
+  "overdose",
+  "fracture",
+  "concussion",
+  "trauma",
+  "choking",
+  "critical",
+  "emergency room",
+  "ambulance needed",
+  "first aid",
+  "icu",
+  "injured person",
+  "severe pain",
+  "blood",
+];
+
+const FIRE_KEYWORDS = [
+  "arson",
+  "caught on fire",
+  "in flames",
+  "burning building",
+  "electrical fire",
+  "gas leak",
+  "gas cylinder",
+  "matchstick",
+  "cigarette",
+  "inflammable",
+  "combustion",
+  "inferno",
+  "ablaze",
+  "engulfed",
+  "fireplace",
+  "petrol",
+  "gasoline",
+  "lighter",
+  "burnt",
+  "charred",
+  "flames spreading",
+  "building on fire",
+  "house fire",
+  "wildfire",
+  "forest fire",
+  "emergency",
+];
+
+const MUNICIPAL_KEYWORDS = [
+  "garbage",
+  "waste",
+  "trash",
+  "construction",
+  "debris",
+  "illegal construction",
+  "dumping",
+  "waterlogging",
+  "flooding",
+  "dirty water",
+  "damaged road",
+  "underground",
+  "maintenance",
+  "repair needed",
+  "civic issue",
+  "city repair",
+];
+
+const POLICE_KEYWORDS = [
+  "crime",
+  "criminal",
+  "illegal activity",
+  "smuggling",
+  "drunk",
+  "traffic violation",
+  "speeding",
+  "accident caused",
+  "hit and run",
+  "beating",
+  "attack",
+  "stabbing",
+  "vandalism",
+  "disputed",
+  "suspicious",
+  "threatening",
+  "extortion",
+  "molested",
+  "abducted",
+  "dangerous person",
+  "harassed",
+  "intimidated",
+  "gang",
+  "fight",
+  "violence",
+  "police",
+];
+
 const CRITICAL_KEYWORDS = [
   "fire",
   "collapse",
@@ -451,6 +610,235 @@ const CRITICAL_LOCATIONS = [
   "railway_station",
   "metro_station",
 ];
+
+// ===== EMERGENCY CATEGORY CLASSIFICATION =====
+
+export type EmergencyCategory = "Hospital" | "Fire" | "Municipal" | "Police";
+
+/**
+ * Classify incident into emergency category based on keywords and objects
+ * IMPROVED: Primary keywords (5x weight) override secondary (2x weight)
+ * WITH FORCED DETECTION: If exact keyword matched, force that category
+ */
+function classifyEmergencyCategory(
+  text: string,
+  objects: string[]
+): { category: EmergencyCategory; confidence: number; scores: Record<string, number> } {
+  const textLower = text.toLowerCase();
+  
+  console.log(`🔍 Classifying text: "${textLower}"`);
+  console.log(`🔍 Objects detected: ${objects.join(", ") || "none"}`);
+  
+  let categoryScores = {
+    Hospital: 0,
+    Fire: 0,
+    Municipal: 0,
+    Police: 0,
+  };
+
+  // Helper: Match keyword with word boundaries (whole words only)
+  const matchKeyword = (text: string, keyword: string): number => {
+    const pattern = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi");
+    const matches = text.match(pattern);
+    return matches ? matches.length : 0;
+  };
+
+  // ===== PHASE 1: PRIMARY KEYWORDS (Strong Indicators - 5x weight) =====
+  console.log(`\n📋 Checking PRIMARY keywords:`);
+  (Object.entries(PRIMARY_KEYWORDS) as Array<[EmergencyCategory, string[]]>).forEach(
+    ([category, keywords]) => {
+      let categoryMatches = 0;
+      keywords.forEach((kw) => {
+        const matches = matchKeyword(textLower, kw);
+        if (matches > 0) {
+          console.log(`   ✓ ${category}: Found "${kw}" (${matches}x) = +${matches * 5}`);
+          categoryMatches += matches;
+        }
+        categoryScores[category] += matches * 5; // Very high weight
+        if (objects.some((obj) => matchKeyword(obj.toLowerCase(), kw) > 0)) {
+          categoryScores[category] += 3; // Bonus for objects match
+        }
+      });
+    }
+  );
+
+  // ===== PHASE 2: SECONDARY KEYWORDS (Supporting Evidence - 2x weight) =====
+  const totalPrimaryScore = Object.values(categoryScores).reduce((a, b) => a + b, 0);
+  
+  console.log(`\n📊 Primary keywords total: ${totalPrimaryScore}`);
+  
+  if (totalPrimaryScore < 10) {
+    // If primary keywords didn't match strongly, check secondary
+    console.log(`\n📋 Primary score low, checking SECONDARY keywords:`);
+    const secondaryMap = {
+      Hospital: HOSPITAL_KEYWORDS,
+      Fire: FIRE_KEYWORDS,
+      Municipal: MUNICIPAL_KEYWORDS,
+      Police: POLICE_KEYWORDS,
+    };
+
+    (Object.entries(secondaryMap) as Array<[EmergencyCategory, string[]]>).forEach(
+      ([category, keywords]) => {
+        keywords.forEach((kw) => {
+          const matches = matchKeyword(textLower, kw);
+          if (matches > 0) {
+            console.log(`   ✓ ${category}: Found "${kw}" (${matches}x) = +${matches * 2}`);
+          }
+          categoryScores[category] += matches * 2; // Lower weight for secondary
+          if (objects.some((obj) => matchKeyword(obj.toLowerCase(), kw) > 0)) {
+            categoryScores[category] += 1; // Small bonus for objects match
+          }
+        });
+      }
+    );
+  }
+
+  // Normalize scores (0-100)
+  const maxScore = Math.max(...Object.values(categoryScores));
+  const normalizedScores = {
+    Hospital: maxScore > 0 ? (categoryScores.Hospital / maxScore) * 100 : 0,
+    Fire: maxScore > 0 ? (categoryScores.Fire / maxScore) * 100 : 0,
+    Municipal: maxScore > 0 ? (categoryScores.Municipal / maxScore) * 100 : 0,
+    Police: maxScore > 0 ? (categoryScores.Police / maxScore) * 100 : 0,
+  };
+
+  // Determine winner
+  const entries = Object.entries(categoryScores).sort(([, a], [, b]) => b - a);
+  const [winnerName, winnerScore] = entries[0];
+  const [, runnerUpScore] = entries[1];
+
+  // Calculate confidence (0-1)
+  let confidence = 0;
+  if (maxScore === 0) {
+    // No keywords matched - default to Municipal
+    confidence = 0.3;
+    console.log(`⚠️ No keywords matched, defaulting to Municipal with 0.3 confidence`);
+  } else {
+    // Confidence based on gap between winner and runner-up
+    const gap = winnerScore - runnerUpScore;
+    const gapRatio = gap / (winnerScore + 5);
+    confidence = Math.min(0.5 + gapRatio * 0.5, 1.0); // Range 0.5-1.0
+  }
+
+  const category = winnerName as EmergencyCategory;
+
+  console.log(`\n✅ FINAL CLASSIFICATION:`);
+  console.log(`   Category: ${category}`);
+  console.log(`   Raw Scores: ${JSON.stringify(categoryScores)}`);
+  console.log(`   Confidence: ${(confidence * 100).toFixed(1)}%`);
+  console.log(`   Normalized: ${JSON.stringify(normalizedScores)}`);
+
+  return { category, confidence, scores: normalizedScores };
+}
+
+/**
+ * Calculate category-specific priority within each department
+ */
+function calculateCategoryPriority(
+  category: EmergencyCategory,
+  severity: string,
+  text: string
+): {
+  department_priority: string;
+  urgency_multiplier: number;
+} {
+  const textLower = text.toLowerCase();
+
+  switch (category) {
+    case "Hospital":
+      if (
+        textLower.includes("unconscious") ||
+        textLower.includes("bleeding") ||
+        textLower.includes("critical")
+      ) {
+        return { department_priority: "Life Threatening", urgency_multiplier: 2 };
+      }
+      if (
+        textLower.includes("injury") ||
+        textLower.includes("accident") ||
+        severity === "CRITICAL"
+      ) {
+        return {
+          department_priority: "Emergency",
+          urgency_multiplier: 1.8,
+        };
+      }
+      if (severity === "HIGH") {
+        return {
+          department_priority: "Urgent Care",
+          urgency_multiplier: 1.5,
+        };
+      }
+      return { department_priority: "Medical Aid", urgency_multiplier: 1 };
+
+    case "Fire":
+      if (textLower.includes("explosion")) {
+        return { department_priority: "Active Explosion", urgency_multiplier: 3 };
+      }
+      if (
+        textLower.includes("building") ||
+        textLower.includes("house") ||
+        severity === "CRITICAL"
+      ) {
+        return {
+          department_priority: "Structural Fire",
+          urgency_multiplier: 3,
+        };
+      }
+      if (textLower.includes("gas") || textLower.includes("chemical")) {
+        return {
+          department_priority: "Hazardous Fire",
+          urgency_multiplier: 2.5,
+        };
+      }
+      return { department_priority: "General Fire", urgency_multiplier: 2 };
+
+    case "Municipal":
+      if (
+        textLower.includes("water") ||
+        textLower.includes("flooding") ||
+        severity === "CRITICAL"
+      ) {
+        return { department_priority: "Critical Infrastructure", urgency_multiplier: 1.8 };
+      }
+      if (textLower.includes("construction")) {
+        return {
+          department_priority: "Illegal Activity",
+          urgency_multiplier: 1.3,
+        };
+      }
+      if (severity === "HIGH") {
+        return { department_priority: "Urgent Repair", urgency_multiplier: 1.2 };
+      }
+      return { department_priority: "Maintenance", urgency_multiplier: 1 };
+
+    case "Police":
+      if (
+        textLower.includes("murder") ||
+        textLower.includes("rape") ||
+        textLower.includes("kidnapping")
+      ) {
+        return { department_priority: "Heinous Crime", urgency_multiplier: 3 };
+      }
+      if (
+        textLower.includes("robbery") ||
+        textLower.includes("theft") ||
+        textLower.includes("violence")
+      ) {
+        return {
+          department_priority: "Serious Crime",
+          urgency_multiplier: 2.5,
+        };
+      }
+      if (textLower.includes("accident") || textLower.includes("traffic")) {
+        return { department_priority: "Traffic/Accident", urgency_multiplier: 1.5 };
+      }
+      return { department_priority: "General Crime", urgency_multiplier: 1.2 };
+
+    default:
+      return { department_priority: "General", urgency_multiplier: 1 };
+  }
+}
 
 /**
  * Determine severity from detected objects and text description
@@ -488,9 +876,24 @@ function analyzeSeverity(objects: string[], text: string): "LOW" | "MEDIUM" | "H
 }
 
 /**
- * Main Priority Engine: Combines all signals into final priority
+ * Main Priority Engine: Combines all signals into final priority with department routing
  */
 export function calculatePriority(input: PrioritizationInput): PrioritizationOutput {
+  // Classify incident into category with confidence
+  const { category, confidence: classificationConfidence } = classifyEmergencyCategory(
+    input.location,
+    input.detected_hazards
+  );
+  
+  const { department_priority, urgency_multiplier } = calculateCategoryPriority(
+    category,
+    input.issue_severity,
+    input.location
+  );
+
+  // Get base score for this category
+  const categoryBaseScore = CATEGORY_BASE_SCORES[category];
+
   let baseScore = 0;
 
   // 1️⃣ Severity Multiplier
@@ -503,10 +906,9 @@ export function calculatePriority(input: PrioritizationInput): PrioritizationOut
   baseScore += severityScores[input.issue_severity] || 30;
 
   // 2️⃣ Crowd Count (urgency indicator)
-  // More people affected = higher priority
   baseScore += Math.min(input.crowd_count * 2, 20);
 
-  // 3️⃣ Critical Location Bonus (+15 points)
+  // 3️⃣ Critical Location Bonus
   if (input.is_critical_location) {
     baseScore += 15;
   }
@@ -514,13 +916,19 @@ export function calculatePriority(input: PrioritizationInput): PrioritizationOut
   // 4️⃣ Report Count (community validation)
   baseScore += Math.min(input.num_reports * 3, 15);
 
-  // 5️⃣ Credibility Checks (subtract if suspicious)
+  // 5️⃣ Credibility Checks
   const credibilityScore = 
     (input.text_credibility * 30) + 
     (input.image_text_match * 20) + 
     ((1 - input.fake_score) * 20);
   
-  baseScore = baseScore * (credibilityScore / 70); // Weight by credibility
+  baseScore = baseScore * (credibilityScore / 70);
+
+  // 6️⃣ Apply category-specific urgency multiplier
+  baseScore = baseScore * urgency_multiplier;
+
+  // 7️⃣ Apply category confidence multiplier (boosts score if classification is confident)
+  baseScore = baseScore * classificationConfidence;
 
   // Cap at 100
   baseScore = Math.min(Math.max(baseScore, 0), 100);
@@ -531,7 +939,7 @@ export function calculatePriority(input: PrioritizationInput): PrioritizationOut
 
   if (baseScore >= 80) {
     priorityLevel = "CRITICAL";
-    urgencySeconds = 60; // 1 minute response time
+    urgencySeconds = 60; // 1 minute
   } else if (baseScore >= 60) {
     priorityLevel = "HIGH";
     urgencySeconds = 300; // 5 minutes
@@ -543,28 +951,41 @@ export function calculatePriority(input: PrioritizationInput): PrioritizationOut
     urgencySeconds = 3600; // 1 hour
   }
 
+  console.log(`📊 Priority Calculation: Category=${category} (${(categoryBaseScore * 100).toFixed(0)}%), Confidence=${(classificationConfidence * 100).toFixed(1)}%, Score=${Math.round(baseScore)}, Level=${priorityLevel}`);
+
   return {
     priority_level: priorityLevel,
     priority_score: Math.round(baseScore),
-    recommendation: getRecommendation(priorityLevel, input),
+    department: category,
+    department_priority,
+    department_confidence: categoryBaseScore, // Add the base category confidence
+    recommendation: getRecommendation(priorityLevel, category, department_priority, input),
     estimated_urgency_seconds: urgencySeconds,
   };
 }
 
 /**
- * Generate human-readable recommendation
+ * Generate human-readable recommendation with department routing
  */
 function getRecommendation(
   level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+  category: EmergencyCategory,
+  department_priority: string,
   input: PrioritizationInput
 ): string {
-  const hazards = input.detected_hazards.slice(0, 3).join(", ");
-  
+  const hazards = input.detected_hazards.slice(0, 3).join(", ") || "Incident";
+  const departmentEmojis = {
+    Hospital: "🏥",
+    Fire: "🚒",
+    Municipal: "🏗️",
+    Police: "🚔",
+  };
+
   const templates = {
-    CRITICAL: `🚨 IMMEDIATE ACTION REQUIRED: ${hazards} detected at ${input.location}. Estimated ${input.crowd_count} people affected. Dispatch emergency services NOW.`,
-    HIGH: `⚠️ HIGH PRIORITY: ${hazards} reported at ${input.location}. ${input.num_reports} reports verified. Dispatch within 5 minutes.`,
-    MEDIUM: `📌 MEDIUM PRIORITY: ${hazards} needs investigation at ${input.location}. Schedule response within 15 minutes.`,
-    LOW: `✓ Low priority: Report logged. Community can help resolve. Schedule follow-up if needed.`,
+    CRITICAL: `${departmentEmojis[category]} CRITICAL - ${department_priority}: ${hazards} at ${input.location}. ${input.crowd_count} people affected. IMMEDIATE DISPATCH to ${category} required.`,
+    HIGH: `${departmentEmojis[category]} HIGH PRIORITY - ${department_priority}: ${hazards} at ${input.location}. Route to ${category} department. Dispatch within 5 min.`,
+    MEDIUM: `${departmentEmojis[category]} MEDIUM - ${department_priority}: ${hazards} at ${input.location}. Route to ${category}. Schedule response within 15 min.`,
+    LOW: `${departmentEmojis[category]} LOW - ${department_priority}: Report logged. Route to ${category} for follow-up.`,
   };
 
   return templates[level];
@@ -652,17 +1073,20 @@ export async function processSubmission(
       priority_score: 0,
       recommendation: "🚨 REJECTED: Report blocked due to AI-generated/manipulated image. Manual review required.",
       estimated_urgency_seconds: 0,
+      department: "Municipal",
+      department_priority: "Rejected",
+      department_confidence: 0,
     };
   } else {
     // Only calculate priority for verified, authentic reports
     const isCriticalLocation = CRITICAL_LOCATIONS.some(loc =>
-      request.location?.toLowerCase().includes(loc.toLowerCase())
+      finalTextDescription?.toLowerCase().includes(loc.toLowerCase())
     );
 
     const priorityInput: PrioritizationInput = {
       issue_severity: severity,
       crowd_count: Math.min(request.report_count || 1, 100),
-      location: request.location || "Unknown",
+      location: finalTextDescription, // ✅ Use full description for classification!
       is_critical_location: isCriticalLocation,
       num_reports: request.report_count || 1,
       fake_score: imageFakeScore,
