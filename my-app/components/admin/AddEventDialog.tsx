@@ -42,7 +42,7 @@ export default function AddEventDialog({
         city: "",
         start_date: "",
         end_date: "",
-        status: "upcoming",
+        status: "upcoming" as "active" | "upcoming" | "completed" | "cancelled",
         target_leads: 0,
         actual_leads: 0,
     });
@@ -209,7 +209,7 @@ export default function AddEventDialog({
                             </Label>
                             <Select
                                 value={formData.status}
-                                onValueChange={(value) =>
+                                onValueChange={(value: any) =>
                                     setFormData({ ...formData, status: value })
                                 }
                             >

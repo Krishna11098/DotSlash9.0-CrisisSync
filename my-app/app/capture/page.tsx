@@ -18,11 +18,13 @@ import { Camera, User, CheckCircle2, ArrowLeft, Image as ImageIcon } from "lucid
 import { useRouter } from "next/navigation";
 import { isValidEmail, isValidPhone, validateMaxLength, validateRequiredText } from "@/lib/validation";
 import { scanBusinessCard } from "@/lib/ocr";
+import CardScanner from "@/components/admin/CardScanner";
 
 // Regex patterns for data extraction from OCR
 const REGEX_PATTERNS = {
   email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
   phone: /(?:\+91[-.\s]?)?(?:[0-9]{2,4}[-.\s]?)*[0-9]{7,10}/g,
+  company: /(?:^|\n)(?!.*(?:Inc\.|LLC|Corp|Pvt\.|Ltd\.))(?:[A-Z][a-zA-Z&'-]+(?:\s+[A-Z][a-zA-Z&'-]+)*\s+(?:Inc\.|LLC|Corp|Pvt\.|Ltd\.|Company|Group|Solutions|Technologies|Services|Enterprises|Industries))(?=$|\n)/gi,
 };
 
 // Validate extracted data quality
@@ -344,11 +346,6 @@ export default function LeadCapturePage() {
       setErrorMessage(`OCR error: ${message}`);
       console.error("❌ OCR Processing Error:", err);
     } finally {
-      setOcrProcessing(false);
-    }
-  };
-      if (err instanceof Error) message = err.message;
-      setErrorMessage(`Error: ${message}`);
       setOcrProcessing(false);
     }
   };
