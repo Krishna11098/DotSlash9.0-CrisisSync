@@ -80,10 +80,11 @@ export async function GET() {
     status: "🟢 Multimodal Truth + Priority Engine is running",
     version: "1.0.0",
     capabilities: [
-      "✅ Deepfake Detection (Image)",
-      "✅ AI-Generated Text Detection (RoBERTa)",
-      "✅ Image-Text Consistency (CLIP)",
-      "✅ Scene Object Detection (DETR)",
+      "✅ Image Content Moderation (Sightengine)",
+      "✅ Spam Detection (Heuristic)",
+      "✅ Image Description (Google Gemini)",
+      "✅ Keyword Matching (Gemini + User Text)",
+      "✅ Scene Analysis (Sightengine)",
       "✅ Intelligent Priority Ranking",
     ],
     endpoints: {

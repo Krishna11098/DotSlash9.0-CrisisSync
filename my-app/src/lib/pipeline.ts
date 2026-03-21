@@ -118,13 +118,152 @@ export async function detectTextFake(text: string): Promise<number> {
 }
 
 // ============================================================================
-// 🧩 STEP 2: IMAGE-TEXT CONSISTENCY (CLIP)
+// 🎨 STEP 1.5: GEMINI IMAGE DESCRIPTION
 // ============================================================================
 
 /**
+ * Get Image Description using Gemini API
+ * Converts image to text description using Google Gemini Vision
+ * Returns: description text or empty string on failure
+ */
+export async function getImageDescriptionFromGemini(imageBase64: string): Promise<string> {
+  try {
+    // Extract base64 without data URL prefix
+    const base64Image = imageBase64.includes(",") 
+      ? imageBase64.split(",")[1] 
+      : imageBase64;
+
+    const geminiApiKey = process.env.GEMINI_API_KEY || "AIzaSyDummyGeminiKeyPlaceholder123456789";
+    
+    if (geminiApiKey.includes("Dummy")) {
+      console.warn("⚠️ Using dummy Gemini API key. Set GEMINI_API_KEY in .env.local for production");
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${geminiApiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: "Describe this image in detail. Focus on objects, people, actions, and any emergency or crisis indicators. Be specific and factual.",
+                },
+                {
+                  inline_data: {
+                    mime_type: "image/jpeg",
+                    data: base64Image,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`❌ Gemini API Error: ${response.status}`);
+      return "";
+    }
+
+    const result = await response.json() as any;
+    const description = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    
+    console.log("📝 Gemini Image Description:", description.substring(0, 100) + "...");
+    
+    return description;
+  } catch (error) {
+    console.error("❌ Gemini image description error:", error);
+    return "";
+  }
+}
+
+/**
+ * Extract Emergency Keywords
+ * Returns keywords from text that match emergency categories
+ */
+function extractEmergencyKeywords(text: string): {category: string; keywords: string[]} {
+  const emergencyKeywords = {
+    fire: ["fire", "burning", "flame", "smoke", "blaze", "ignite", "inferno", "combustion"],
+    water: ["flood", "water", "drowning", "swimming", "river", "rain", "inundation", "submerged", "tsunami"],
+    accident: ["accident", "crash", "collision", "vehicle", "car", "injured", "injury", "hit", "impact"],
+    building: ["building", "structure", "collapse", "damage", "debris", "rubble", "destruction", "demolition"],
+    crowd: ["crowd", "gathering", "people", "group", "mass", "assembly", "congregation", "gathering"],
+    medical: ["medical", "hospital", "injured", "sick", "emergency", "ambulance", "doctor"],
+    crime: ["crime", "robbery", "theft", "violence", "assault", "shooting", "stabbing"],
+  };
+
+  const textLower = text.toLowerCase();
+  const foundKeywords: {category: string; keywords: string[]} = {
+    category: "",
+    keywords: []
+  };
+
+  for (const [category, keywords] of Object.entries(emergencyKeywords)) {
+    for (const keyword of keywords) {
+      if (textLower.includes(keyword)) {
+        if (!foundKeywords.category) {
+          foundKeywords.category = category;
+        }
+        if (!foundKeywords.keywords.includes(keyword)) {
+          foundKeywords.keywords.push(keyword);
+        }
+      }
+    }
+  }
+
+  return foundKeywords;
+}
+
+/**
+ * Match Keywords Between Gemini Description and User Text
+ * If keywords match (e.g., both mention "fire"), don't flag as suspicious
+ * Returns: match score 0-1 (higher = better match)
+ */
+export function matchKeywordsGeminiVsUserText(
+  geminiDescription: string,
+  userText: string
+): number {
+  if (!geminiDescription || !userText) {
+    return 0.5; // Neutral if either is empty
+  }
+
+  const userKeywords = extractEmergencyKeywords(userText);
+  const geminiKeywords = extractEmergencyKeywords(geminiDescription);
+
+  // If no keywords found in either
+  if (userKeywords.keywords.length === 0 && geminiKeywords.keywords.length === 0) {
+    return 0.6; // Neutral match
+  }
+
+  // Count matching keywords
+  let matchCount = 0;
+  for (const keyword of userKeywords.keywords) {
+    if (geminiDescription.toLowerCase().includes(keyword)) {
+      matchCount++;
+    }
+  }
+
+  // Calculate match percentage
+  const totalKeywords = Math.max(userKeywords.keywords.length, 1);
+  const matchScore = Math.min(matchCount / totalKeywords, 1.0);
+
+  console.log(`🔗 Keyword Match: User="${userKeywords.category}" Gemini="${geminiKeywords.category}" Score=${(matchScore * 100).toFixed(0)}%`);
+  console.log(`   User Keywords: ${userKeywords.keywords.join(", ") || "none"}`);
+  console.log(`   Matched: ${matchCount}/${totalKeywords}`);
+
+  return matchScore;
+}
+
+/**
  * Image-Text Consistency Check
- * Uses Sightengine's capabilities and text matching heuristics
- * Validates image and text are actually describing related content
+ * Uses Gemini API to describe image and matches with user text
+ * If keywords in description match user text, high confidence (not flagged as fake)
  * Returns: 0 (mismatch) to 1 (good match)
  */
 export async function clipImageTextMatch(
@@ -132,35 +271,18 @@ export async function clipImageTextMatch(
   text: string
 ): Promise<number> {
   try {
-    // For now, use keyword-based matching as Sightengine doesn't have direct CLIP
-    // In production, consider using a dedicated CLIP API or vision model
-    
-    // Common emergency keywords
-    const emergencyKeywords = {
-      fire: ["fire", "burning", "flame", "smoke", "blaze", "ignite"],
-      water: ["flood", "water", "drowning", "swimming", "river", "rain", "inundation"],
-      accident: ["accident", "crash", "collision", "vehicle", "car", "injured", "injury"],
-      building: ["building", "structure", "collapse", "damage", "debris", "rubble"],
-      crowd: ["crowd", "gathering", "people", "group", "mass", "assembly"],
-    };
-    
-    const textLower = text.toLowerCase();
-    let matchScore = 0;
-    let detectedCategories = 0;
-    
-    for (const [category, keywords] of Object.entries(emergencyKeywords)) {
-      if (keywords.some(kw => textLower.includes(kw))) {
-        matchScore += 0.2;
-        detectedCategories++;
-      }
+    // Get image description from Gemini
+    const geminiDescription = await getImageDescriptionFromGemini(imageBase64);
+
+    if (!geminiDescription) {
+      console.warn("⚠️ Could not get image description from Gemini, using fallback");
+      return 0.6;
     }
-    
-    // Normalize the score
-    const finalScore = Math.min(matchScore, 1.0);
-    
-    console.log(`📊 Image-Text Match: ${(finalScore * 100).toFixed(1)}% (detected: ${detectedCategories} categories)`);
-    
-    return finalScore;
+
+    // Match keywords between Gemini description and user text
+    const matchScore = matchKeywordsGeminiVsUserText(geminiDescription, text);
+
+    return matchScore;
   } catch (error) {
     console.error("Image-text matching error:", error);
     return 0.6; // Neutral fallback
