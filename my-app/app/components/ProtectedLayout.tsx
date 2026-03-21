@@ -3,20 +3,37 @@
 import { useAuth } from '@/app/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { Navbar } from '@/app/components/Navbar'
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
+import { WifiOff } from 'lucide-react'
 
 export default function ProtectedLayout({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   const router = useRouter()
+  const [isOnline, setIsOnline] = useState(true)
 
   useEffect(() => {
-    if (!loading && !user) {
+    setIsOnline(navigator.onLine)
+
+    const goOnline = () => setIsOnline(true)
+    const goOffline = () => setIsOnline(false)
+
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [])
+
+  useEffect(() => {
+    // Only redirect to login when online and not authenticated
+    if (!loading && !user && isOnline) {
       router.push('/login')
     }
-  }, [user, loading, router])
+  }, [user, loading, router, isOnline])
 
-  // Show loading state
-  if (loading) {
+  // Show loading state (only when online, offline should proceed immediately)
+  if (loading && isOnline) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800">
         <div className="text-center">
@@ -29,15 +46,23 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
     )
   }
 
-  // Use a simple null check here to preventing flash of content before redirect logic kicks in
-  if (!user) {
+  // When online and no user, don't render content (redirect will happen)
+  if (!user && isOnline) {
     return null
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+      {/* Offline banner */}
+      {!isOnline && (
+        <div className="bg-amber-500 text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2">
+          <WifiOff size={16} />
+          <span>You&apos;re offline — form data will be saved locally and synced when you reconnect</span>
+        </div>
+      )}
       <main>{children}</main>
     </div>
   )
 }
+

@@ -1,7 +1,7 @@
 // Service Worker for XSpark CRM PWA
 // Version 1.0.2
 
-const CACHE_VERSION = 'xspark-v2';
+const CACHE_VERSION = 'xspark-v3';
 const OFFLINE_URL = '/offline';
 
 // Cache names
@@ -14,7 +14,7 @@ const STATIC_ASSETS = [
   '/',
   '/offline',
   '/login',
-  '/staff',
+  '/tab',
   '/admin',
   '/install',
   '/manifest.json',
@@ -22,7 +22,7 @@ const STATIC_ASSETS = [
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[Service Worker] Installing... v1.0.1');
+  console.log('[Service Worker] Installing... v1.0.3');
   console.log('[Service Worker] Origin:', self.location.origin);
   
   event.waitUntil(
@@ -120,7 +120,13 @@ self.addEventListener('fetch', (event) => {
             return cachedResponse;
           }
           
-          // Serve offline page as last fallback
+          // Try serving the lead form page (start_url) as primary offline fallback
+          const tabResponse = await caches.match('/tab');
+          if (tabResponse) {
+            return tabResponse;
+          }
+
+          // Serve offline page as secondary fallback
           const offlineResponse = await caches.match(OFFLINE_URL);
           if (offlineResponse) {
             return offlineResponse;
