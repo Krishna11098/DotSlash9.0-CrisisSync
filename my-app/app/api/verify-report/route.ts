@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
       location: body.location,
       report_count: body.report_count || 1,
       coordinates: body.coordinates,
+      user_selected_departments: body.departments,
     });
 
     return NextResponse.json(
