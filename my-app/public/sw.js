@@ -1,7 +1,7 @@
 // Service Worker for XSpark CRM PWA
-// Version 1.0.2
+// Version 2.0.1 (Force update)
 
-const CACHE_VERSION = 'xspark-v3';
+const CACHE_VERSION = 'xspark-v4';
 const OFFLINE_URL = '/offline';
 
 // Cache names
@@ -9,64 +9,87 @@ const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const IMAGE_CACHE = `${CACHE_VERSION}-images`;
 
-// URLs to cache on install - use relative paths for cross-origin compatibility
-const STATIC_ASSETS = [
+// Key routes to cache - MUST work offline
+const KEY_ROUTES = [
   '/',
   '/offline',
   '/login',
   '/dashboard',
   '/admin',
   '/install',
-  '/manifest.json',
 ];
 
-// Install event - cache static assets
+// Install event - cache routes INDIVIDUALLY
 self.addEventListener('install', (event) => {
-  console.log('[Service Worker] Installing... v1.0.3');
+  console.log('[Service Worker] 🔧 Installing v2.0.1...');
   console.log('[Service Worker] Origin:', self.location.origin);
   
   event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => {
-        console.log('[Service Worker] Caching static assets');
-        return cache.addAll(STATIC_ASSETS).catch((error) => {
-          console.error('[Service Worker] Failed to cache assets:', error);
-          // Don't fail installation if some assets can't be cached
-          return Promise.resolve();
-        });
-      })
+    Promise.all([
+      // Cache manifest
+      caches.open(STATIC_CACHE)
+        .then((cache) => {
+          console.log('[Service Worker] 📦 Caching manifest.json');
+          return cache.addAll(['/manifest.json']).catch((err) => {
+            console.warn('[Service Worker] ⚠️  Failed to cache manifest:', err.message);
+          });
+        }),
+      
+      // Cache each route individually - if one fails, others continue
+      caches.open(DYNAMIC_CACHE)
+        .then((cache) => {
+          console.log('[Service Worker] 📦 Caching routes individually...');
+          return Promise.all(
+            KEY_ROUTES.map((route) => {
+              return cache.add(route)
+                .then(() => {
+                  console.log(`[Service Worker] ✅ Cached: ${route}`);
+                  return true;
+                })
+                .catch((error) => {
+                  console.warn(`[Service Worker] ⚠️  Failed to cache ${route}:`, error.message);
+                  return false;
+                });
+            })
+          ).then((results) => {
+            const cached = results.filter(r => r).length;
+            console.log(`[Service Worker] ✅ Installation complete: ${cached}/${KEY_ROUTES.length} routes cached`);
+          });
+        })
+    ])
       .then(() => {
-        console.log('[Service Worker] Installation complete');
+        console.log('[Service Worker] 🚀 Claiming clients...');
         return self.skipWaiting(); // Activate immediately
       })
       .catch((error) => {
-        console.error('[Service Worker] Installation failed:', error);
+        console.error('[Service Worker] ❌ Installation error:', error);
       })
   );
 });
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('[Service Worker] Activating...');
+  console.log('[Service Worker] 🔄 Activating...');
   
   event.waitUntil(
     caches.keys()
       .then((cacheNames) => {
+        console.log('[Service Worker] Found caches:', cacheNames);
         return Promise.all(
           cacheNames
             .filter((cacheName) => {
-              // Delete caches that don't match current version
+              // Delete old version caches
               return cacheName.startsWith('xspark-') && cacheName !== STATIC_CACHE && 
                      cacheName !== DYNAMIC_CACHE && cacheName !== IMAGE_CACHE;
             })
             .map((cacheName) => {
-              console.log('[Service Worker] Deleting old cache:', cacheName);
+              console.log('[Service Worker] 🗑️  Deleting old cache:', cacheName);
               return caches.delete(cacheName);
             })
         );
       })
       .then(() => {
-        console.log('[Service Worker] Activation complete');
+        console.log('[Service Worker] ✅ Activation complete');
         return self.clients.claim(); // Take control immediately
       })
   );
@@ -99,12 +122,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle navigation requests - Network First with offline fallback
+  // Handle navigation requests - Network First with smart offline fallback
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Clone and cache successful navigation responses
+          // Cache successful nav responses
           if (response.ok) {
             const responseClone = response.clone();
             caches.open(DYNAMIC_CACHE).then((cache) => {
@@ -114,28 +137,51 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(async () => {
-          // Try to serve from cache
-          const cachedResponse = await caches.match(request);
+          console.log(`[Service Worker] 📡 Online request failed: ${request.url}`);
+          const url = new URL(request.url);
+          const pathname = url.pathname;
+          
+          // Strategy 1: Try exact URL from cache
+          let cachedResponse = await caches.match(request);
           if (cachedResponse) {
+            console.log(`[Service Worker] ✅ Serving from exact cache: ${pathname}`);
             return cachedResponse;
           }
           
-          // Try serving the dashboard page (start_url) as primary offline fallback
-          const dashboardResponse = await caches.match('/dashboard');
-          if (dashboardResponse) {
-            return dashboardResponse;
-          }
-
-          // Serve offline page as secondary fallback
-          const offlineResponse = await caches.match(OFFLINE_URL);
-          if (offlineResponse) {
-            return offlineResponse;
+          // Strategy 2: Try main route (e.g., /dashboard for /dashboard/something)
+          // Extract base route like /dashboard from /dashboard/sub/path
+          const basePath = '/' + pathname.split('/')[1];
+          if (basePath !== '/' && basePath !== pathname) {
+            cachedResponse = await caches.match(basePath);
+            if (cachedResponse) {
+              console.log(`[Service Worker] ✅ Serving base route: ${basePath}`);
+              return cachedResponse;
+            }
           }
           
-          // Ultimate fallback
+          // Strategy 3: Try root /
+          cachedResponse = await caches.match('/');
+          if (cachedResponse) {
+            console.log(`[Service Worker] ✅ Serving root as fallback`);
+            return cachedResponse;
+          }
+          
+          // Strategy 4: Try offline page
+          cachedResponse = await caches.match(OFFLINE_URL);
+          if (cachedResponse) {
+            console.log(`[Service Worker] ✅ Serving offline page`);
+            return cachedResponse;
+          }
+          
+          // Fallback: Return offline HTML
+          console.log(`[Service Worker] ❌ No cache available, showing offline message`);
           return new Response(
-            '<html><body><h1>Offline</h1><p>You are currently offline. Please check your internet connection.</p></body></html>',
-            { headers: { 'Content-Type': 'text/html' } }
+            '<html><body style="font-family: Arial; text-align: center; padding: 50px;"><h1>📡 Offline</h1><p>You are offline and this page is not cached.</p><p>Visit the main app or dashboard when online to cache pages for offline use.</p></body></html>',
+            { 
+              status: 503,
+              statusText: 'Service Unavailable',
+              headers: { 'Content-Type': 'text/html; charset=utf-8' } 
+            }
           );
         })
     );

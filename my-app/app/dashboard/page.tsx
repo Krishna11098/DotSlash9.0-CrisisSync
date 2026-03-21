@@ -82,6 +82,9 @@ export default function CitizenDashboard() {
       }
 
       try {
+        console.log('[Dashboard] 🔍 Loading user profile...')
+        console.log('[Dashboard] Online status:', navigator.onLine)
+        
         const { data, error } = await supabase
           .from('users2')
           .select('role')
@@ -89,11 +92,32 @@ export default function CitizenDashboard() {
           .single()
 
         if (!error && data?.role) {
+          console.log('[Dashboard] ✅ Role fetched from Supabase:', data.role)
           setRole(data.role as 'citizen' | 'gov_employee')
+          // Cache role for offline use
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(`user-role-${user.id}`, data.role)
+          }
+        } else {
+          throw new Error(error?.message || 'Failed to fetch role')
         }
-      } catch {
-        // If offline, default to citizen to allow form access
-        setRole('citizen')
+      } catch (err) {
+        console.log('[Dashboard] ⚠️ Failed to fetch role from Supabase, using cached/default:', err)
+        
+        // Try to get cached role
+        let cachedRole = null
+        if (typeof window !== 'undefined') {
+          cachedRole = localStorage.getItem(`user-role-${user.id}`)
+        }
+        
+        if (cachedRole) {
+          console.log('[Dashboard] 📦 Using cached role:', cachedRole)
+          setRole(cachedRole as 'citizen' | 'gov_employee')
+        } else {
+          // Default to citizen (always show citizen form for offline)
+          console.log('[Dashboard] 📝 Defaulting to citizen role (offline)')
+          setRole('citizen')
+        }
       }
 
       setProfileLoading(false)
@@ -150,6 +174,26 @@ export default function CitizenDashboard() {
     const interval = setInterval(fetchUserRequests, 10000);
     return () => clearInterval(interval);
   }, [user])
+
+  // Listen for offline sync completion to show real priority
+  useEffect(() => {
+    const handleSyncComplete = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('[Dashboard] 🔔 Sync completed! Showing real priority:', customEvent.detail.data?.priority);
+      
+      // Update the submission result with real data from sync
+      if (customEvent.detail.data) {
+        setSubmissionResult(customEvent.detail.data as FinalResponse);
+        setMessage({
+          text: '✅ Request verified and routed to authorities after coming online!',
+          type: 'success'
+        });
+      }
+    };
+
+    window.addEventListener('offline-sync-complete', handleSyncComplete);
+    return () => window.removeEventListener('offline-sync-complete', handleSyncComplete);
+  }, [])
 
   const getLocation = () => {
     if (navigator.geolocation) {
@@ -322,6 +366,78 @@ export default function CitizenDashboard() {
     setLoading(true)
     setMessage({ text: '', type: '' })
 
+    // ✅ OFFLINE MODE - Save locally immediately
+    if (!isOnline) {
+      console.log('[submit] 📡 OFFLINE MODE - Saving request locally...')
+      try {
+        // Save audio locally if present
+        let audioUrl: string | null = null
+        if (audioBlob) {
+          const { offlineAudioRef } = await saveAudioBlobLocally(audioBlob, 'auth-req-audio.webm')
+          audioUrl = offlineAudioRef
+        }
+
+        // Save to IndexedDB
+        const saveResult = await saveRequestOffline({
+          topic: topic || '',
+          departments,
+          urgency,
+          time_limit_minutes: timeLimit ? parseInt(timeLimit) : null,
+          latitude,
+          longitude,
+          image_url: imagePreview, // Use base64 preview for offline
+          audio_url: audioUrl,
+          status: 'pending',
+        })
+
+        console.log('[submit] ✅ Offline save result:', saveResult)
+
+        // Show success message
+        setMessage({
+          text: '✅ Request saved offline! Will verify and route to authorities when you\'re back online.',
+          type: 'success'
+        })
+
+        // Show pending results
+        setSubmissionResult({
+          approved: true,
+          is_fake: false,
+          reasoning: 'Saved offline - will verify when synced',
+          image_fake_score: 0,
+          text_spam_score: 0,
+          clip_similarity: 0,
+          confidence: 0,
+          priority: {
+            priority_level: 'MEDIUM',
+            priority_score: 0,
+            department: (departments[0] === 'hospital' ? 'Hospital' :
+              departments[0] === 'fire' ? 'Fire' :
+              departments[0] === 'police' ? 'Police' :
+              'Municipal') as any,
+            department_priority: 'Syncing...',
+            recommendation: 'Your request is saved locally and will be verified and routed to the nearest authorities when you connect to the internet.',
+            estimated_urgency_seconds: 0,
+            department_confidence: 0,
+          },
+          severity: 'MEDIUM',
+          detected_objects: [],
+        })
+
+        setLoading(false)
+        return // Stop here - don't try API call
+      } catch (err: any) {
+        console.error('[submit] ❌ Offline save failed:', err)
+        setMessage({
+          text: `Failed to save offline: ${err.message || 'Unknown error'}`,
+          type: 'error'
+        })
+        setLoading(false)
+        return
+      }
+    }
+
+    // 🌐 ONLINE MODE - Upload to cloud, verify, and route
+    console.log('[submit] 🌐 ONLINE MODE - Processing request...')
     try {
       let imageUrl = null
       let audioUrl = null
@@ -356,7 +472,7 @@ export default function CitizenDashboard() {
         }
       }
 
-      console.log('[submit] Saving request offline...')
+      console.log('[submit] 💾 Saving request offline...')
       await saveRequestOffline({
         topic: topic || '',
         departments,
@@ -368,10 +484,10 @@ export default function CitizenDashboard() {
         audio_url: audioUrl,
         status: 'pending',
       })
-      console.log('[submit] Request saved successfully')
+      console.log('[submit] ✅ Request saved to local storage')
 
-      // Call real verification API
-      console.log('[submit] Calling verification API...')
+      // Call real verification API (online mode)
+      console.log('[submit] 🔐 Online - calling verification API...')
       const { data: { session } } = await supabase.auth.getSession()
       const authToken = session?.access_token
 
@@ -452,8 +568,11 @@ export default function CitizenDashboard() {
   }
 
   if (role !== 'citizen') {
+    console.log(`[Dashboard] 🔐 Rendering Gov Dashboard (role: ${role})`)
     return <GovEmployeeDashboard />
   }
+  
+  console.log(`[Dashboard] 📝 Rendering Citizen Form (role: ${role})`)
 
   return (
     <ProtectedLayout>
