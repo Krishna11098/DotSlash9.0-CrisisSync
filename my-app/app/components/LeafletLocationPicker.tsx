@@ -56,7 +56,7 @@ export function LeafletLocationPicker({
   }, [latitude, longitude])
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+    <div className="relative z-0 overflow-hidden rounded-xl border border-slate-200 shadow-sm">
       <MapContainer
         key={`${center.toString()}`}
         center={center}

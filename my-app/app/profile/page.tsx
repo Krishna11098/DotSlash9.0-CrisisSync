@@ -195,7 +195,7 @@ export default function ProfilePage() {
               </div>
 
               {/* Name & Info */}
-              <div className="flex-1 space-y-1">
+              <div className="flex-1 min-w-0 space-y-1">
                 {loading ? (
                   <div className="space-y-2">
                     <div className="h-7 bg-white/20 rounded-lg w-48 animate-pulse" />
@@ -203,8 +203,8 @@ export default function ProfilePage() {
                   </div>
                 ) : (
                   <>
-                    <h1 className="text-3xl font-bold text-white tracking-tight">{profile?.name || 'Your Profile'}</h1>
-                    <p className="text-white/70 text-sm">{profile?.email}</p>
+                    <h1 className="text-3xl font-bold text-white tracking-tight truncate">{profile?.name || 'Your Profile'}</h1>
+                    <p className="text-white/70 text-sm truncate">{profile?.email}</p>
                   </>
                 )}
               </div>
@@ -225,7 +225,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Main Content */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 pb-12">
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 pb-12">
           {/* Status Alert */}
           {status.text && (
             <div
