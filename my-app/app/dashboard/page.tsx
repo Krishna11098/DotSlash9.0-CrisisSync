@@ -196,6 +196,20 @@ export default function CitizenDashboard() {
   }, [])
 
   const getLocation = () => {
+    // Hardcoded Surat coordinates for offline mode
+    const SURAT_LATITUDE = 21.1794
+    const SURAT_LONGITUDE = 72.8311
+
+    if (!isOnline) {
+      // Offline mode: use hardcoded Surat coordinates
+      console.log('[Dashboard] 📍 Offline mode detected - using hardcoded Surat coordinates')
+      setLatitude(SURAT_LATITUDE)
+      setLongitude(SURAT_LONGITUDE)
+      setMessage({ text: '📍 Location set to Surat, Gujarat (Offline Mode)', type: 'success' })
+      setTimeout(() => setMessage({ text: '', type: '' }), 2000)
+      return
+    }
+
     if (navigator.geolocation) {
       setLocationLoading(true)
       navigator.geolocation.getCurrentPosition(
@@ -207,12 +221,22 @@ export default function CitizenDashboard() {
           setTimeout(() => setMessage({ text: '', type: '' }), 2000)
         },
         () => {
-          setMessage({ text: 'Failed to get location. Please enable location services.', type: 'error' })
+          // Fallback to Surat if geolocation fails
+          console.log('[Dashboard] 📍 Geolocation failed - using fallback Surat coordinates')
+          setLatitude(SURAT_LATITUDE)
+          setLongitude(SURAT_LONGITUDE)
+          setMessage({ text: 'Could not get precise location - using Surat, Gujarat as default', type: 'warning' })
           setLocationLoading(false)
+          setTimeout(() => setMessage({ text: '', type: '' }), 3000)
         }
       )
     } else {
-      setMessage({ text: 'Geolocation is not supported by your browser', type: 'error' })
+      // Fallback to Surat if geolocation not supported
+      console.log('[Dashboard] 📍 Geolocation not supported - using fallback Surat coordinates')
+      setLatitude(SURAT_LATITUDE)
+      setLongitude(SURAT_LONGITUDE)
+      setMessage({ text: 'Geolocation not supported - using Surat, Gujarat as default', type: 'warning' })
+      setTimeout(() => setMessage({ text: '', type: '' }), 3000)
     }
   }
 
@@ -703,15 +727,23 @@ export default function CitizenDashboard() {
                 Location <span className="text-red-500">*</span>
               </label>
               {latitude && longitude ? (
-                <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between bg-emerald-50 border-2 border-emerald-400 rounded-xl px-4 py-3 shadow-sm shadow-emerald-100">
                   <div className="flex items-center gap-2 text-emerald-700">
-                    <CheckCircle size={18} />
-                    <span className="font-medium text-sm">Location captured</span>
+                    <CheckCircle size={18} className="text-emerald-600" />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-semibold text-sm">Location captured ✓</span>
+                      {!isOnline && latitude === 21.1794 && longitude === 72.8311 && (
+                        <span className="text-xs text-emerald-600 font-medium">📍 Surat, Gujarat</span>
+                      )}
+                      {isOnline && (latitude !== 21.1794 || longitude !== 72.8311) && (
+                        <span className="text-xs text-emerald-600">({latitude?.toFixed(4)}, {longitude?.toFixed(4)})</span>
+                      )}
+                    </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => { setLatitude(null); setLongitude(null) }}
-                    className="text-xs text-emerald-600 hover:text-emerald-800 font-medium underline"
+                    className="text-xs text-emerald-600 hover:text-emerald-800 font-medium underline hover:bg-emerald-100 px-2 py-1 rounded"
                   >
                     Recapture
                   </button>
