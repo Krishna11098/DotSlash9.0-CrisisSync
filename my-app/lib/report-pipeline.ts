@@ -107,36 +107,23 @@ async function resolveImageBuffer(source: string): Promise<Buffer> {
  */
 export async function detectImageFake(imageBase64: string): Promise<number> {
   try {
-    // Validate environment variables
-    const sightengineUserId = process.env.SIGHTENGINE_USER_ID;
-    const sightengineApiKey = process.env.SIGHTENGINE_API_KEY;
-    
-    if (!sightengineUserId || !sightengineApiKey) {
-      console.error(`❌ Sightengine credentials missing! User ID: ${!!sightengineUserId}, API Key: ${!!sightengineApiKey}`);
-      return 0.5;
-    }
-    
     // Resolve URL or Base64 to Buffer
     const imageBuffer = await resolveImageBuffer(imageBase64);
     
     const formData = new FormData();
     const blob = new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" });
     formData.append("media", blob);
-    formData.append("models", "nudity,weapon,offensive,faces");
-    formData.append("api_user", sightengineUserId);
-    formData.append("api_secret", sightengineApiKey);
+    formData.append("models", "nudity,wad,offensive,faces");
+    formData.append("api_user", process.env.SIGHTENGINE_USER_ID || "");
+    formData.append("api_secret", process.env.SIGHTENGINE_API_KEY || "");
 
-    console.log("🌐 Sending request to Sightengine API...");
-    
     const response = await fetch("https://api.sightengine.com/1.0/check.json", {
       method: "POST",
       body: formData,
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       console.error(`❌ Sightengine API Error: ${response.status} ${response.statusText}`);
-      console.error(`📋 Error Response: ${errorText}`);
       return 0.5;
     }
 
@@ -147,25 +134,19 @@ export async function detectImageFake(imageBase64: string): Promise<number> {
     // Calculate suspicion score based on moderation results
     let suspicionScore = 0;
     
-    // Check for inappropriate content (FIX: Correct operator precedence)
-    const nudityScore = result.nudity?.raw || 0;
-    if (nudityScore > 0.3) {
+    // Check for inappropriate content
+    if (result.nudity?.raw || 0 > 0.3) {
       suspicionScore += 0.25;
-      console.log(`   ⚠️ Nudity detected: ${nudityScore.toFixed(2)}`);
     }
     
-    // Check for weapons/violence (FIX: Correct operator precedence)
-    const weaponScore = result.weapon?.raw || 0;
-    if (weaponScore > 0.4) {
+    // Check for weapons/violence
+    if (result.weapon?.raw || 0 > 0.4) {
       suspicionScore += 0.25;
-      console.log(`   ⚠️ Weapon detected: ${weaponScore.toFixed(2)}`);
     }
     
-    // Check for offensive content (FIX: Correct operator precedence)
-    const offensiveScore = result.offensive?.raw || 0;
-    if (offensiveScore > 0.3) {
+    // Check for offensive content
+    if (result.offensive?.raw || 0 > 0.3) {
       suspicionScore += 0.15;
-      console.log(`   ⚠️ Offensive content detected: ${offensiveScore.toFixed(2)}`);
     }
     
     // Cap at 1.0
@@ -658,35 +639,22 @@ export async function clipImageTextMatch(
  */
 export async function detectSceneObjects(imageBase64: string): Promise<string[]> {
   try {
-    // Validate environment variables
-    const sightengineUserId = process.env.SIGHTENGINE_USER_ID;
-    const sightengineApiKey = process.env.SIGHTENGINE_API_KEY;
-    
-    if (!sightengineUserId || !sightengineApiKey) {
-      console.error(`❌ Sightengine credentials missing for object detection!`);
-      return [];
-    }
-    
     const imageBuffer = await resolveImageBuffer(imageBase64);
     
     const formData = new FormData();
     const blob = new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" });
     formData.append("media", blob);
-    formData.append("models", "weapon,properties");
-    formData.append("api_user", sightengineUserId);
-    formData.append("api_secret", sightengineApiKey);
+    formData.append("models", "weapons,properties");
+    formData.append("api_user", process.env.SIGHTENGINE_USER_ID || "");
+    formData.append("api_secret", process.env.SIGHTENGINE_API_KEY || "");
 
-    console.log("🌐 Sending scene detection request to Sightengine API...");
-    
     const response = await fetch("https://api.sightengine.com/1.0/check.json", {
       method: "POST",
       body: formData,
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       console.error(`❌ Sightengine object detection error: ${response.status}`);
-      console.error(`📋 Error Response: ${errorText}`);
       return [];
     }
 
