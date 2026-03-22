@@ -6,7 +6,7 @@ import type { LatLngExpression } from 'leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-// Fix default marker assets when bundling with Next.js
+// Fixx default marker assets when bundling with Next.js
 const markerIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
