@@ -413,12 +413,20 @@ export function validateImageVsUserClaim(
     const reasonObj = (geminiAnalysis.reasoning_for_classification || "").toLowerCase();
     const combinedText = sceneDescObj + " " + reasonObj;
     
-    // HARDCODED OVERRIDE: If the scene physically describes non-emergencies, OVERRIDE GEMINI'S DECISION entirely
-    const isHardcodedFake = ["pool", "bonfire", "campfire", "bathtub", "fireplace", "fountain", "beach", "grill", "bbq", "candle"].some(word => 
-      combinedText.includes(word)
-    );
+    // ✅ IMPROVED: Only reject if BOTH Gemini AND user claim indicate controlled situation
+    // This prevents false rejections when image mentions contextual details
+    const controlledFireKeywords = ["pool", "bonfire", "campfire", "bathtub", "fireplace", "fountain", "beach", "grill", "bbq", "candle"];
+    const emergencyContextKeywords = ["building", "structure", "house", "home", "spreading", "uncontrolled", "engulfed", "burning building", "wildfire"];
+    
+    // Check if image description contains non-emergency keywords
+    const hasControlledKeyword = controlledFireKeywords.some(word => combinedText.includes(word));
+    // Check if image has emergency context keywords
+    const hasEmergencyContext = emergencyContextKeywords.some(word => combinedText.includes(word));
+    
+    // Only reject if: controlled keywords found AND NO emergency context AND Gemini agrees
+    const isHardcodedFake = hasControlledKeyword && !hasEmergencyContext;
 
-    if (isControlledSituation === true || isHardcodedFake || imageCategory === "controlled_fire" || imageCategory === "recreational_water") {
+    if (isControlledSituation === true || (isHardcodedFake && !hasEmergencyContext) || (imageCategory === "controlled_fire" && !hasEmergencyContext) || imageCategory === "recreational_water") {
       console.log(`   ⛔⛔ CONTROLLED SITUATION DETECTED: This is NOT an emergency. Object text: ${sceneDescObj}`);
       return {
         matchScore: 0.01,
@@ -442,14 +450,14 @@ export function validateImageVsUserClaim(
     // ============================================================================
     // LAYER 3: SEMANTIC KEYWORD MATCHING - CONTROLLED FIRE TERMS
     // ============================================================================
-    const controlledFireKeywords = ["bonfire", "campfire", "camping", "fireplace", "pool", "swimming", "park", "event", "controlled", "barrel", "grill"];
-    const disasterFireKeywords = ["building", "structure", "house", "home", "wildfire", "uncontrolled", "spreading", "street", "damage"];
-    const disasterWaterKeywords = ["flood", "street", "home", "building", "damage", "submerged", "overflow", "destruction"];
+    const userClaimControlledKeywords = ["bonfire", "campfire", "camping", "fireplace", "pool", "swimming", "park", "event", "controlled", "barrel", "grill"];
+    const userClaimDisasterFireKeywords = ["building", "structure", "house", "home", "wildfire", "uncontrolled", "spreading", "street", "damage"];
+    const userClaimDisasterWaterKeywords = ["flood", "street", "home", "building", "damage", "submerged", "overflow", "destruction"];
     
-    const hasControlledKeyword = controlledFireKeywords.some(kw => userClaim.includes(kw));
-    const hasDisasterKeyword = disasterFireKeywords.some(kw => userClaim.includes(kw));
+    const hasControlledKeywordInClaim = userClaimControlledKeywords.some(kw => userClaim.includes(kw));
+    const hasDisasterKeywordInClaim = userClaimDisasterFireKeywords.some(kw => userClaim.includes(kw));
     
-    if (hasControlledKeyword && !hasDisasterKeyword) {
+    if (hasControlledKeywordInClaim && !hasDisasterKeywordInClaim) {
       console.log(`   ⛔ User claim contains controlled fire keywords: "${userClaim}"`);
       return {
         matchScore: 0.1,
@@ -479,14 +487,14 @@ export function validateImageVsUserClaim(
     }
 
     // ============================================================================
-    // LAYER 5: CONFIDENCE THRESHOLD - MUST BE VERY HIGH TO PASS
+    // LAYER 5: CONFIDENCE THRESHOLD - Should be balanced (not too extreme)
     // ============================================================================
-    if (imageConfidence < 0.75) {
-      console.log(`   ⛔ Confidence too low for actual emergency: ${(imageConfidence * 100).toFixed(0)}%`);
+    if (imageConfidence < 0.70) {
+      console.log(`   ⛔ Confidence too low for emergency acceptance: ${(imageConfidence * 100).toFixed(0)}%`);
       return {
-        matchScore: 0.15,
+        matchScore: 0.20,
         isRealEmergency: false,
-        reasoning: `Image analysis confidence below safety threshold (${(imageConfidence * 100).toFixed(0)}% < 75%)`
+        reasoning: `Image analysis confidence below acceptance threshold (${(imageConfidence * 100).toFixed(0)}% < 70%)`
       };
     }
 
@@ -520,23 +528,23 @@ export function validateImageVsUserClaim(
     }
 
     // ============================================================================
-    // CONFIDENCE SCORING - ULTRA STRICT
+    // CONFIDENCE SCORING - BALANCED (not ultra-strict)
     // ============================================================================
     let matchScore = 0;
 
-    // REQUIRE VERY HIGH CONFIDENCE - This is a safety-critical system
-    if (isImageEmergency && imageConfidence >= 0.88) {
-      // EXTREME confidence - only then give high score
-      matchScore = 0.85 + (0.15 * (imageConfidence - 0.88) / 0.12); // 0.85-1.0 (only from 0.88+)
-    } else if (isImageEmergency && imageConfidence >= 0.80) {
-      // High confidence
-      matchScore = 0.65 + (0.2 * (imageConfidence - 0.80) / 0.08); // 0.65-0.85
+    // Scale confidence to match score (more lenient now)
+    if (isImageEmergency && imageConfidence >= 0.80) {
+      // High confidence - give good score
+      matchScore = 0.75 + (0.25 * (imageConfidence - 0.80) / 0.20); // 0.75-1.0
     } else if (isImageEmergency && imageConfidence >= 0.75) {
-      // Moderate confidence (still just barely passing)
-      matchScore = 0.45;
+      // Moderate-high confidence
+      matchScore = 0.60 + (0.15 * (imageConfidence - 0.75) / 0.05); // 0.60-0.75
+    } else if (isImageEmergency && imageConfidence >= 0.70) {
+      // Moderate confidence (still accepting)
+      matchScore = 0.50;
     } else {
       // Below threshold - reject
-      matchScore = 0.12;
+      matchScore = 0.20;
     }
 
     console.log(`   ✅ Final Match Score: ${matchScore.toFixed(3)} (Gemini confidence: ${(imageConfidence * 100).toFixed(0)}%)`);
@@ -610,27 +618,26 @@ export async function clipImageTextMatch(
       console.warn("⚠️ Could not get image analysis from Gemini, using ULTRA strict fallback");
       
       // ============================================================================
-      // BACKUP DEFENSE: When Gemini fails, use aggressive text+image heuristics
+      // BACKUP DEFENSE: When Gemini fails, use conservative approach (not aggressive)
       // ============================================================================
       const textLower = text.toLowerCase();
       
-      // Check if text contains dangerous false-positive keywords
-      const bonefireKeywords = ["bonfire", "campfire", "fireplace", "grill", "bbq", "camping", "party"];
-      const poolKeywords = ["pool", "swimming", "swim", "beach", "water park"];
-      const controlledKeywords = bonefireKeywords.concat(poolKeywords);
+      // ✅ IMPROVED: Only flag if BOTH text AND typical patterns indicate false positive
+      const bonefireKeywords = ["bonfire", "campfire", "fireplace", "grill", "bbq", "camping"];
+      const poolKeywords = ["pool", "swimming", "swim", "beach water", "park water"];
       
       const hasBonfireKeyword = bonefireKeywords.some(kw => textLower.includes(kw));
       const hasPoolKeyword = poolKeywords.some(kw => textLower.includes(kw));
       
-      // If user mentions bonfire/pool in text, be EXTREMELY suspicious of the image
+      // Only apply low score if user explicitly mentions controlled setting
       if (hasBonfireKeyword || hasPoolKeyword) {
-        console.log(`   ⛔⛔ BACKUP DEFENSE: Text contains controlled fire/water keywords`);
+        console.log(`   ⚠️ BACKUP DEFENSE: Text contains controlled fire/water keywords`);
         console.log(`      Bonfire match: ${hasBonfireKeyword}, Pool match: ${hasPoolKeyword}`);
-        return 0.08; // VERY LOW when Gemini fails + controlled keywords detected
+        return 0.25; // More lenient fallback (was 0.08)
       }
       
-      // Otherwise default to very strict fallback
-      return 0.15; // Stricter than before
+      // Otherwise use moderate fallback (not ultra-strict)
+      return 0.45; // More lenient default (was 0.15)
     }
 
     // Validate image against user's text claim using intelligent semantic matching
@@ -1646,14 +1653,13 @@ export async function processSubmission(
   console.log("🧠 Matching image with text description (CLIP)...");
   const clipSimilarity = await clipImageTextMatch(request.image, finalTextDescription);
 
-  // ⛔ CRITICAL: FALSE POSITIVE GATE (ULTRA AGGRESSIVE - ZERO TOLERANCE)
-  // With the new ultra-strict scoring, legitimate emergencies score 0.45+
-  // ANYTHING below 0.35 is automatically rejected (bonfire, pool, etc.)
-  // This catches the boundary case where clipSimilarity = 0.300
-  if (clipSimilarity <= 0.35) {
-    console.log(`\n🚨 ⛔⛔⛔ FALSE POSITIVE GATE TRIGGERED: Image-text match critically low (${clipSimilarity.toFixed(3)} <= 0.35)`);
-    console.log(`   This is DEFINITELY a BONFIRE vs FIRE DISASTER or POOL vs TSUNAMI scenario`);
-    console.log(`   ZERO TOLERANCE - Outright rejecting immediately`);
+  // ⛔ CRITICAL: FALSE POSITIVE GATE (IMPROVED - More nuanced)
+  // Raised threshold from 0.35 to 0.30 to avoid false rejections of legitimate emergencies
+  // But still catches obvious fakes (bonfire vs fire, pool vs tsunami)
+  if (clipSimilarity <= 0.30) {
+    console.log(`\n🚨 ⛔⛔ FALSE POSITIVE GATE TRIGGERED: Image-text match critically low (${clipSimilarity.toFixed(3)} <= 0.30)`);
+    console.log(`   This is likely a FALSE POSITIVE (bonfire, pool, beach, or other non-emergency)`);
+    console.log(`   STRICT - Rejecting immediately`);
     
     return {
       image_fake_score: 1, // Mark as definitely fake
@@ -1663,11 +1669,11 @@ export async function processSubmission(
       severity: "LOW",
       confidence: 0,
       is_fake: true,
-      reasoning: `🚨 REJECTED - ZERO TOLERANCE FALSE POSITIVE: Image-text match score (${clipSimilarity.toFixed(3)}) is critically low. Image does not depict actual emergency (appears to be bonfire, pool, beach, or other non-emergency). Genuine emergency visual evidence REQUIRED.`,
+      reasoning: `🚨 REJECTED - FALSE POSITIVE: Image-text match score (${clipSimilarity.toFixed(3)}) is critically low. Image does not depict actual emergency (appears to be bonfire, pool, beach, or other non-emergency). Genuine emergency visual evidence REQUIRED.`,
       priority: {
         priority_level: "LOW",
         priority_score: 0,
-        recommendation: "🚨 ZERO TOLERANCE REJECTION: Confirmed false positive. Image shows non-emergency situation.",
+        recommendation: "🚨 FALSE POSITIVE REJECTED: Confirmed non-emergency situation. Image shows recreational or controlled activity.",
         estimated_urgency_seconds: 0,
         department: "Municipal",
         department_priority: "Rejected",
@@ -1700,14 +1706,15 @@ export async function processSubmission(
   console.log(`📊 [processSubmission] Severity Result: ${severity}`);
 
   // ============================================================================
-  // MEGA DEFENSE: Low clip similarity + high claimed severity = FRAUD
+  // MEGA DEFENSE: Very low clip similarity + high claimed severity = possible FRAUD
+  // ✅ IMPROVED: Raised threshold from 0.40 to 0.25 to avoid catching legitimate cases
   // ============================================================================
   const textLower = finalTextDescription.toLowerCase();
   const claimsUrgentEmergency = ["fire", "flood", "tsunami", "disaster", "emergency", "critical"].some(word => textLower.includes(word));
   
-  if (clipSimilarity < 0.40 && claimsUrgentEmergency && severity !== "LOW") {
-    console.log(`\n🚨 MEGA DEFENSE TRIGGERED: Low image-text match (${clipSimilarity.toFixed(3)}) + claims urgent emergency`);
-    console.log(`   This is a FRAUD ATTEMPT - user claims ${severity} emergency but image doesn't match`);
+  if (clipSimilarity < 0.25 && claimsUrgentEmergency && severity !== "LOW") {
+    console.log(`\n🚨 MEGA DEFENSE TRIGGERED: Very low image-text match (${clipSimilarity.toFixed(3)}) + claims urgent emergency`);
+    console.log(`   This is likely a FRAUD ATTEMPT - user claims ${severity} emergency but image doesn't match`);
     
     return {
       image_fake_score: 1,

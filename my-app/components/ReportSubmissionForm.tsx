@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { VerificationResult, PrioritizationOutput, FinalResponse } from "@/lib/report-types";
+import { saveRequestOffline, isBrowserOnline, getSyncStatusSnapshot } from "@/lib/offline-sync";
+import { saveAudioBlobLocally } from "@/lib/audio-storage";
 
 interface SubmissionState {
   loading: boolean;
@@ -212,42 +214,155 @@ export function ReportSubmissionForm() {
     setState({ loading: true, submitted: false });
 
     try {
-      const response = await fetch("/api/submit-request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          // Map department UI names to database values
-          departments: formData.departments.map(dept => 
-            dept === "municipal corporation" ? "municipal corporation" : dept
-          ),
-        }),
-      });
+      const online = isBrowserOnline();
+      console.log("📡 Is online:", online);
 
-      const apiResult = await response.json();
+      // ============================================================================
+      // OFFLINE-FIRST SUBMISSION: If offline or online submission fails, save locally
+      // ============================================================================
+      if (!online) {
+        console.log("📴 User is offline, saving to local database...");
+        
+        // Save audio blob to local storage if present
+        let audioRef = formData.audio;
+        if (formData.audio) {
+          const audioBlob = await fetch(formData.audio).then(r => r.blob());
+          const { offlineAudioRef } = await saveAudioBlobLocally(audioBlob, `audio-${Date.now()}.webm`);
+          audioRef = offlineAudioRef;
+          console.log("✅ Audio stored locally with ref:", audioRef);
+        }
 
-      if (!response.ok) {
-        throw new Error(apiResult.error || "Failed to process report");
+        // Save request to offline database
+        const offlineSaveResult = await saveRequestOffline({
+          topic: formData.text_description,
+          image_url: formData.image.substring(0, 500),
+          audio_url: audioRef,
+          latitude: 0, // TODO: Extract from location or use geolocation
+          longitude: 0,
+          departments: formData.departments as any,
+          urgency: "moderate",
+          time_limit_minutes: 30,
+          status: "pending",
+        });
+
+        setState({
+          loading: false,
+          submitted: true,
+          result: {
+            success: true,
+            status: "saved_offline",
+            message: offlineSaveResult.message,
+            reason: "Your request has been saved locally. It will be sent to authorities when you reconnect to the internet.",
+          } as any,
+        });
+
+        // Reset form
+        setFormData({
+          image: "",
+          text_description: "",
+          audio: "",
+          location: "",
+          report_count: 1,
+          departments: [],
+        });
+        setAudioTranscription("");
+        setRecordingTime(0);
+        return;
       }
 
-      setState({
-        loading: false,
-        submitted: true,
-        result: apiResult.data,
-      });
+      // ============================================================================
+      // ONLINE: Try to submit to server
+      // ============================================================================
+      console.log("🌐 User is online, submitting to server...");
+      
+      try {
+        const response = await fetch("/api/submit-request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...formData,
+            // Map department UI names to database values
+            departments: formData.departments.map(dept => 
+              dept === "municipal corporation" ? "municipal corporation" : dept
+            ),
+          }),
+        });
 
-      // Reset form
-      setFormData({
-        image: "",
-        text_description: "",
-        audio: "",
-        location: "",
-        report_count: 1,
-        departments: [],
-      });
-      setAudioTranscription("");
-      setRecordingTime(0);
+        const apiResult = await response.json();
+
+        if (!response.ok) {
+          throw new Error(apiResult.error || "Failed to process report");
+        }
+
+        setState({
+          loading: false,
+          submitted: true,
+          result: apiResult.data,
+        });
+
+        // Reset form
+        setFormData({
+          image: "",
+          text_description: "",
+          audio: "",
+          location: "",
+          report_count: 1,
+          departments: [],
+        });
+        setAudioTranscription("");
+        setRecordingTime(0);
+      } catch (onlineError) {
+        // ============================================================================
+        // FALLBACK: If online submission fails, save offline instead
+        // ============================================================================
+        console.log("❌ Online submission failed, falling back to offline storage...", onlineError);
+        
+        // Save audio blob to local storage if present
+        let audioRef = formData.audio;
+        if (formData.audio) {
+          const audioBlob = await fetch(formData.audio).then(r => r.blob());
+          const { offlineAudioRef } = await saveAudioBlobLocally(audioBlob, `audio-${Date.now()}.webm`);
+          audioRef = offlineAudioRef;
+          console.log("✅ Audio stored locally with ref:", audioRef);
+        }
+
+        const offlineSaveResult = await saveRequestOffline({
+          topic: formData.text_description,
+          image_url: formData.image.substring(0, 500),
+          audio_url: audioRef,
+          latitude: 0,
+          longitude: 0,
+          departments: formData.departments as any,
+          urgency: "moderate",
+          time_limit_minutes: 30,
+          status: "pending",
+        });
+
+        setState({
+          loading: false,
+          submitted: true,
+          result: {
+            success: true,
+            status: "saved_offline",
+            message: offlineSaveResult.message,
+            reason: "Unable to reach servers at the moment. Your report has been saved and will be sent when connection is restored.",
+          } as any,
+        });
+
+        // Reset form
+        setFormData({
+          image: "",
+          text_description: "",
+          audio: "",
+          location: "",
+          report_count: 1,
+          departments: [],
+        });
+        setAudioTranscription("");
+        setRecordingTime(0);
+      }
     } catch (error) {
+      console.error("❌ Submission error:", error);
       setState({
         loading: false,
         submitted: false,
