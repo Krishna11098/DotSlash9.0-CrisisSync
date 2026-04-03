@@ -6,7 +6,7 @@
 
 1. **Add to `.env.local`**:
    ```bash
-   ASSEMBLYAI_API_KEY=817dc7eb777244a8bc0b5a2734e6258c
+   ASSEMBLYAI_API_KEY=##########################
    ```
 
 2. **Restart server**:
@@ -106,7 +106,7 @@ POST /api/verify-report
 
 ### Environment Variable
 ```bash
-ASSEMBLYAI_API_KEY=817dc7eb777244a8bc0b5a2734e6258c
+ASSEMBLYAI_API_KEY=#############################3
 ```
 
 ### Supported Formats
@@ -171,7 +171,7 @@ ASSEMBLYAI_API_KEY=817dc7eb777244a8bc0b5a2734e6258c
 
 - **Setup Guide**: See `ASSEMBLYAI_SETUP.md`
 - **AssemblyAI Docs**: https://www.assemblyai.com/docs
-- **Your API Key**: `817dc7eb777244a8bc0b5a2734e6258c`
+- **Your API Key**: `###########################`
 
 ---
 
