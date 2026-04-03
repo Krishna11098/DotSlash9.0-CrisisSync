@@ -112,7 +112,7 @@ User Submits Report
 1. Visit https://www.assemblyai.com/
 2. Sign up for a free account
 3. Go to your Dashboard
-4. Copy the API token (looks like: `817dc7eb777244a8bc0b5a2734e6258c`)
+4. Copy the API token (looks like: `#######################`)
 
 ### Step 2: Configure Environment Variable
 
@@ -120,7 +120,7 @@ Update `.env.local` in `my-app/`:
 
 ```bash
 # Your API key from AssemblyAI
-ASSEMBLYAI_API_KEY=817dc7eb777244a8bc0b5a2734e6258c
+ASSEMBLYAI_API_KEY=###############################
 ```
 
 **Do NOT commit this file to Git** - it's in `.gitignore` by default.
