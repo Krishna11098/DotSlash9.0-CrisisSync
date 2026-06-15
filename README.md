@@ -1,4 +1,4 @@
-# � **EMERGENCY TRUTH ENGINE** 
+# � **CrisisSync** 
 ### *Verify. Prioritize. Respond. Faster.*
 
 ---
