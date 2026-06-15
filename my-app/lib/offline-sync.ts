@@ -35,8 +35,9 @@ export const saveRequestOffline = async (request: Partial<OfflineRequest>): Prom
   try {
     const newRequest: OfflineRequest = {
       ...request,
+      id: request.id || crypto.randomUUID(), // Enforce UUID client-side
       sync_status: 'pending',
-      client_created_at: nowIso(),
+      client_created_at: request.client_created_at || nowIso(),
     } as OfflineRequest
 
     await offlineDb.requests.add(newRequest)
@@ -64,7 +65,24 @@ export const syncRequests = async (): Promise<void> => {
   activeSync = (async () => {
     try {
       const pendingRequests = await offlineDb.requests.where('sync_status').equals('pending').toArray()
-      console.log(`[Sync] 📦 Found ${pendingRequests.length} pending requests`)
+      
+      // Explicit queue sort logic: manually marked urgent first, then by timestamp (FIFO)
+      pendingRequests.sort((a, b) => {
+        const getPriorityWeight = (urgency: string) => {
+          if (urgency === 'emergency') return 3
+          if (urgency === 'urgent') return 2
+          return 1
+        }
+        const weightA = getPriorityWeight(a.urgency)
+        const weightB = getPriorityWeight(b.urgency)
+        if (weightA !== weightB) {
+          return weightB - weightA // Higher urgency weight first
+        }
+        // FIFO otherwise
+        return new Date(a.client_created_at).getTime() - new Date(b.client_created_at).getTime()
+      })
+
+      console.log(`[Sync] 📦 Found and prioritized ${pendingRequests.length} pending requests`)
       
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
@@ -138,6 +156,8 @@ export const syncRequests = async (): Promise<void> => {
               departments: request.departments,
               coordinates: { lat: request.latitude, lng: request.longitude },
               report_count: 1,
+              client_report_id: request.id,
+              client_created_at: request.client_created_at,
             }),
           })
 

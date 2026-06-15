@@ -21,14 +21,14 @@ Technical implementation details of the Multimodal Truth + Priority Engine.
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────┐
-│              ML PIPELINE (pipeline.ts)                    │
+│      UNIFIED MULTIMODAL PIPELINE (report-pipeline.ts)     │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │  1. FAKE DETECTION                               │   │
 │  │     ├─ detectImageFake()                          │   │
 │  │     └─ detectTextFake()                           │   │
 │  └──────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │  2. CONSISTENCY CHECK                            │   │
+│  │  2. SEMANTIC CONSISTENCY (Gemini + Zod)          │   │
 │  │     └─ clipImageTextMatch()                       │   │
 │  └──────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────┐   │
@@ -183,41 +183,28 @@ Return: spam_score (0-1)
 
 #### Step 2: Consistency Check
 
-**Image-Text Keyword Matching (`clipImageTextMatch`)**
+**Multimodal Visual-Semantic Consistency (`clipImageTextMatch`)**
 
 ```
-Text Description
+Image + Text Claim
     ↓
-Emergency Keyword Extraction
-    ├─ Fire keywords: ["fire", "burning", "flame", ...]
-    ├─ Water keywords: ["flood", "water", "drowning", ...]
-    ├─ Accident keywords: ["accident", "crash", "vehicle", ...]
-    ├─ Building keywords: ["building", "collapse", "debris", ...]
-    └─ Crowd keywords: ["crowd", "gathering", "people", ...]
+Gemini Vision Model
+    ├─ Analyze scene strictly
+    ├─ Detect controlled fire/water situations
+    ├─ Assess actual emergency confidence
+    └─ Return structured JSON
     ↓
-Match Score Calculation:
-  - Each matched category → +0.2
-  - Max score: 1.0
+Zod Schema Verification
+    ├─ Type-safe properties parse
+    ├─ Fallback on validation failure
     ↓
 Output: match_score (0-1)
 ```
 
-**Examples:**
-```
-Text: "Major fire on Main Street with explosion"
-Matched: fire, accident
-Score: 0.4 ✓
-
-Text: "Broken streetlight"
-Matched: none
-Score: 0.0 ⚠️
-```
-
-**Why Keyword Matching?**
-- ✅ Simple and interpretable
-- ✅ Fast processing
-- ✅ No vision model required
-- ✅ Can be enhanced with NLP later
+**Why Gemini Multimodal instead of local models?**
+- ✅ **One Unified API Call:** Consolidates deepfake, text classification, and scene consistency checks into a single backend API call, reducing latency and pipeline complexity.
+- ✅ **Structured Output Schema:** Natively uses Gemini's structured response schema to guarantee type-safe responses.
+- ✅ **Double-Layer Validation:** Backed by Zod schema parsing on the server to prevent malicious/malformed JSON ingestion.
 
 #### Step 3: Scene Understanding
 

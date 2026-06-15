@@ -129,6 +129,55 @@ export async function POST(request: NextRequest) {
     console.log(`👤 [submit-request] User: ${user.id}`);
 
     // ========================================================================
+    // STEP 3.5: Idempotency Check
+    // ========================================================================
+    const clientReportId = body.client_report_id || crypto.randomUUID();
+    const clientCreatedAt = body.client_created_at || new Date().toISOString();
+
+    console.log(`🔍 [submit-request] Checking idempotency for report: ${clientReportId}`);
+    const { data: existingRequest } = await supabase
+      .from("requests")
+      .select("id, priority_number, urgency, time_limit_minutes, departments, status")
+      .eq("id", clientReportId)
+      .maybeSingle();
+
+    if (existingRequest) {
+      console.log(`♻️ [submit-request] Idempotent hit: Request ${clientReportId} already processed.`);
+      return NextResponse.json(
+        {
+          success: true,
+          data: {
+            request_id: existingRequest.id,
+            priority_number: existingRequest.priority_number,
+            urgency: existingRequest.urgency,
+            time_limit_minutes: existingRequest.time_limit_minutes,
+            departments_routed: existingRequest.departments,
+            employees_notified: 0,
+            status: existingRequest.status,
+            is_idempotent: true
+          },
+          status: "already_received",
+          message: `♻️ Report was already received and processed.`,
+        },
+        { status: 200 }
+      );
+    }
+
+    // ========================================================================
+    // STEP 3.6: Clock Skew Check
+    // ========================================================================
+    const serverTime = new Date().getTime();
+    const reportedTime = new Date(clientCreatedAt).getTime();
+    const driftMs = reportedTime - serverTime;
+    
+    let clockSkewFlag = false;
+    // Flag if client clock is in the future by > 5 minutes, or in the past/sync-delayed by > 6 hours
+    if (driftMs > 5 * 60 * 1000 || Math.abs(driftMs) > 6 * 60 * 60 * 1000) {
+      console.warn(`⚠️ [submit-request] Clock skew / sync delay detected: ${driftMs / 1000}s drift.`);
+      clockSkewFlag = true;
+    }
+
+    // ========================================================================
     // STEP 4: Map priority_score to urgency level
     // ========================================================================
     let urgency: "emergency" | "urgent" | "moderate";
@@ -165,8 +214,6 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     // STEP 5: Save request to database
     // ========================================================================
-    const now = new Date().toISOString();
-
     console.log(`\n💾 [submit-request] Saving to database...`);
     console.log(`   user_id: ${user.id}`);
     console.log(`   priority_number: ${priorityScore}`);
@@ -178,6 +225,7 @@ export async function POST(request: NextRequest) {
       .from("requests")
       .insert([
         {
+          id: clientReportId,
           user_id: user.id,
           topic: body.text_description || "",
           image_url: body.image.substring(0, 500), // Store first 500 chars or URL
@@ -189,7 +237,11 @@ export async function POST(request: NextRequest) {
           time_limit_minutes: timeLimitMinutes,
           status: "pending",
           priority_number: priorityScore,
-          client_created_at: now,
+          client_created_at: clientCreatedAt,
+          flagged_for_review: clockSkewFlag,
+          flagged_reason: clockSkewFlag 
+            ? `Clock skew / sync delay detected. Client: ${clientCreatedAt}, Server: ${new Date().toISOString()}`
+            : null,
         },
       ])
       .select()

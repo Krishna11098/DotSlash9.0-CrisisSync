@@ -7,35 +7,18 @@
 
 > ### **People in Low-Connectivity Areas Are Invisible to Emergency Services**
 
-**The Critical Reality:** 2.5+ billion people live in areas with poor or unreliable cellular connectivity.
+## 🎯 **PROBLEM STATEMENT**
 
-When emergencies happen in these areas:
-- ❌ **Calls drop or fail completely** — Either no service at all, or 2G/EDGE connectivity
-- ❌ **No message delivery confirmation** — SMS sent to 112 but never arrives or is lost
-- ❌ **No digital record** — If the call is missed or dispatcher is overwhelmed, there's zero backup
-- ❌ **Multiple retry attempts** — People keep calling instead of getting help
-- ❌ **Location data lost** — Emergency services have no idea where the caller is
-- ❌ **Zero government visibility** — Official statistics show "no emergency reported" when people died
-- ❌ **Institutional fail-safe gaps** — If 112 misses the call, disaster
+> ### **Emergency Reporting in Low-Connectivity Areas**
 
-**Real-World Consequences:**
-- 👤 **250,000+ preventable deaths annually** in areas with poor emergency infrastructure  
-- 🚑 **Average response time: 60+ minutes** vs 10-15 minutes in urban areas
-- 📵 **35-40% of emergency calls** in rural/remote areas **never connect**
-- 💔 **People die waiting** because they can't reliably reach help or feel ignored
-- 👨‍🏭 **Economic impact on rural development:** Loss of workforce, healthcare burden
+In remote or disaster-affected areas, cellular connectivity is often highly unstable or restricted to low-bandwidth channels (e.g. 2G/EDGE). When emergency situations occur:
+- ❌ **Calls and messages drop** due to poor signaling.
+- ❌ **Lack of delivery guarantees** means critical requests can be lost.
+- ❌ **Location details are not captured** as offline users cannot transmit GPS coordinates in real-time.
+- ❌ **Network flooding occurs** as users repeatedly try to resubmit requests during connectivity fluctuations.
 
-**Geographic Impact:**
-- 🌍 **Most critical:** Sub-Saharan Africa, South Asia, Southeast Asia, Latin America rural areas
-- 🏔️ **Mountain/Island regions** with zero infrastructure
-- 🌪️ **Disaster zones:** Post-earthquake, flood, cyclone areas where infrastructure fails
-- 📡 **Developing nations** where 40-50% of population lacks reliable cellular coverage
-
-**Economic Value of the Problem:**
-- 💰 **$2.3 trillion** annual global loss (preventable deaths + delayed medical care)
-- 🏥 **Rural hospitals** can't get advance notice to prepare emergency capacity
-- 📊 **Governments have zero data** on emergencies in disconnected areas
-- 🌐 **SDG Gap:** Goal 3.6 (reduce traffic deaths 50%) impossible without emergency data from remote areas
+**The Engineering Challenge:**
+How do we build a highly reliable, offline-first emergency reporting application that captures metadata (images, audio, GPS) offline, guarantees delivery once network returns without creating duplicate entries, and intelligently routes messages to municipal and national responders?
 
 ---
 
@@ -260,7 +243,7 @@ SCENARIO 4: COMPLETE TRANSPARENCY
 | **PWA Framework** | Next.js 16 + React 19 | Works offline, installable like native app |
 | **Offline Database** | Dexie + IndexedDB | Local storage even without network |
 | **Sync Detection** | Service Workers | Detects connectivity changes in background |
-| **AI/ML Models** | Xception, RoBERTa, CLIP, DETR | Prioritizes emergencies, validates authenticity |
+| **AI/ML Model** | Google Gemini Multimodal | Prioritizes emergencies, categorizes incidents, and checks consistency |
 | **Cloud DB** | Supabase PostgreSQL | Secure, scalable government data center |
 | **Voice Calls** | Twilio Python Integration | Calls 112 with pre-recorded emergency details |
 | **Compression** | Zlib + WebAssembly | Works on 2G by reducing data size 10x |
@@ -297,10 +280,10 @@ SCENARIO 4: COMPLETE TRANSPARENCY
   - 🟠 **HIGH** (60-79): Serious but contained, quick response needed
   - 🟡 **MEDIUM** (40-59): Moderate, standard response time acceptable
   - 🟢 **LOW** (0-39): Minor, can wait or self-remediate
-- **Machine learning models analyze:**
-  - Image content (fires, floods, injuries detected via DETR)
-  - Text severity markers (urgent language, keywords)
-  - Historical data (time of day, location patterns)
+- **AI model (Gemini) analyzes:**
+  - Image content (identifying fires, floods, injuries, or controlled situations)
+  - Text severity markers and transcription context
+  - Combined visual-semantic consistency
 - **Assigns department routing:**
   - 🏥 Hospital (medical emergencies)
   - 🚒 Fire (fires, hazmat, rescues)
@@ -352,23 +335,16 @@ SCENARIO 4: COMPLETE TRANSPARENCY
 - **Impact:** First responders know EXACTLY where to go
 
 ### 🔍 **8. EMERGENCY VERIFICATION** ✓
-- **Detects deepfake images (95%+ accuracy)**
-  - Xception neural network analysis
-  - Checks for AI-generated content
-  - Photo authentication
-- **Validates text authenticity (98%+ accuracy)**
-  - RoBERTa AI-generated text detection
-  - Language pattern analysis
-  - Spam/hoax detection
-- **Image-text consistency matching (88%+ accuracy)**
-  - CLIP vision-language model
-  - Ensures description matches image
-  - Prevents fake descriptions with unrelated photos
-- **Scene understanding via DETR**
-  - Detects: fire, flooding, crowds, vehicles, hazards
-  - Extracts object details automatically
-  - Identifies severity from visual content
-- **Impact:** System flags suspicious reports but doesn't silence genuine ones
+- **Unified Multimodal Assessment**
+  - Leverages Google Gemini for simultaneous visual and textual validation.
+  - Detects controlled situations (such as bonfires, campfires, or swimming pools) to filter out recreational false positives.
+- **Strict Response Validation**
+  - Guarantees strict type safety by forcing structured JSON outputs natively from Gemini.
+  - Implements Zod validation on the server to prevent malformed responses and ensure safety-critical verification.
+- **Semantic Alignment (Visual-Textual consistency)**
+  - Compares the user's description against the actual visual evidence of the image.
+  - Automatically rejects reports with low semantic matching or high false-positive indicators.
+- **Impact:** System automatically blocks fake emergency claims while passing genuine ones securely for review.
 
 ### 🎙️ **9. VOICE REPORT RECORDING** 🔊
 - **User records emergency situation** in their own words
@@ -438,17 +414,31 @@ SCENARIO 4: COMPLETE TRANSPARENCY
   - Supabase PostgreSQL with encryption
   - Automatic backups
   - Audit trail logging
-  - Compliance certifications
+- **Compliance certifications**
 - **Impact:** People trust the system with sensitive emergency info
 
-### 📊 **14. OFFLINE-TO-ONLINE SEAMLESS TRANSITION** ⚡
-- **Stores unlimited reports** while offline
-- **Automatic sync** when connectivity returns
-- **Resume capability** if upload interrupted
-- **Batch processing** on government side
-- **No data loss** even with frequent disconnections
-- **Timestamp preserved** from submission time
-- **Impact:** Complete data integrity across offline/online boundaries
+## ⚙️ **SYSTEM RESILIENCE & DISTRIBUTED SYSTEMS ARCHITECTURE**
+
+This project was built for a hackathon targeting low-connectivity emergency reporting. The primary engineering focus is on offline-first sync with idempotency guarantees and building a reliable multi-channel delivery pipeline with graceful degradation when primary channels fail.
+
+### **1. Sync Conflict Resolution & Idempotency**
+When operating in low-connectivity areas, connection drops mid-upload are common. To prevent duplicate emergency records and redundant AI verification costs, the system uses client-generated UUIDs stored in IndexedDB. Upon sync retry, the server verifies if the report ID already exists in the database. If it does, the server returns the cached response immediately, avoiding double-inserting and duplicated Twilio calls.
+
+### **2. Preserving Timestamp Integrity**
+Emergency reports recorded offline must preserve their original creation time for dispatcher decision-making. The database stores two distinct timestamps:
+- `client_created_at` (when the incident was actually recorded offline by the user)
+- `server_created_at` (when the report finally synced to the server)
+
+To guard against malicious manipulation or extreme device clock drifts, the backend calculates the skew between server and client times. If the skew is positive beyond 5 minutes (future clock skew) or negative exceeds 6 hours, the incident is flagged for manual supervisor review.
+
+### **3. Resilient Call Dispatch (Exponential Backoff)**
+If the primary Twilio automated 112 escalation fails due to telephony network congestion or API limits, the system implements an **exponential backoff retry loop** (up to 3 attempts, waiting 1s, 2s, 4s). If all attempts fail, the system falls back gracefully to the Web Dashboard as the single source of truth, ensuring telephony failures never silent-block dispatcher visibility.
+
+### **4. Unified Multimodal AI Pipeline (Gemini)**
+Instead of orchestrating 4 separate, heavy ML models (e.g. deepfake image detection, text spam NLP model, CLIP consistency check, and object detection), this architecture consolidates the verification pipeline into a **single, unified Gemini API call**.
+- **Lower Latency & Cost:** Replaces multiple sequential/parallel network hops or local container inferences with a single optimized call.
+- **Native Structured Output:** Leverages Gemini's structured response schema (JSON mode) to guarantee type-safe response data matching a predefined schema.
+- **Double-Layer Safety:** Parsed natively and validated client-side with **Zod** to ensure safety-critical sanitization before taking actions.
 
 ---
 
@@ -472,21 +462,15 @@ SCENARIO 4: COMPLETE TRANSPARENCY
 4. Tap app icon to submit emergencies anytime
 5. Reports sync automatically when internet returns
 
-#### **Option C: WhatsApp (Simplest)**
-1. Save number: `+1 XXX-XXX-XXXX` (your government emergency line)
-2. Send message: **"EMERGENCY"`
-3. Follow prompts
-4. System processes and sends to 112 + government
-
 ### **For Developers**
 
 #### **Prerequisites**
 - Node.js 18+ ([Download here](https://nodejs.org/))
 - npm or yarn
-- API keys (free tier available):
-  - Supabase (https://supabase.com - free 500MB)
-  - HuggingFace (https://huggingface.co - free tier)
-  - Twilio (https://twilio.com - $15 free credits)
+- API keys:
+  - Supabase (https://supabase.com)
+  - Gemini API (https://aistudio.google.com)
+  - Twilio (https://twilio.com)
 
 #### **Installation (Development)**
 ```bash
@@ -500,162 +484,11 @@ npm install
 # Create environment file
 cp .env.local.example .env.local
 
-# Add your API keys to .env.local:
-NEXT_PUBLIC_SUPABASE_URL=your_url
-NEXT_PUBLIC_SUPABASE_KEY=your_key
-HF_API_KEY=your_huggingface_key
-TWILIO_ACCOUNT_SID=your_twilio_sid
-TWILIO_AUTH_TOKEN=your_token
-TWILIO_PHONE_NUMBER=+1234567890
-
 # Run development server
 npm run dev
 
 # Visit: http://localhost:3000
 ```
-
-#### **Testing Offline Mode**
-1. Go to http://localhost:3000/submit-request
-2. Open Browser DevTools (F12)
-3. Go to **Network tab** → click throttling dropdown
-4. Select **"Offline"**
-5. Submit an emergency
-6. See it stored locally
-7. Go back to "Online" mode
-8. Watch automatic sync happen!
-
-#### **For Government Deployment**
-```bash
-# Build for production
-npm run build
-
-# Deploy to Vercel (recommended)
-vercel deploy
-
-# Or deploy to your own server
-npm start
-```
-
----
-
-## 📞 **GOVERNMENT INTEGRATION GUIDE**
-
-### **1. Set Up Government Emergency Center**
-
-```bash
-# Create admin account
-npm run setup:admin
-
-# Create emergency dispatcher accounts
-npm run setup:dispatcher -- --email=dispatch@government.gov
-
-# Set up government SMS/Call routing
-npm run setup:twilio -- --government-line=+1-XXX-XXX-XXXX
-```
-
-### **2. Configure Emergency Routing**
-
-Edit `config/routing.ts`:
-```typescript
-const routingRules = {
-  MEDICAL: {
-    department: 'hospital',
-    priority_threshold: 40,
-    auto_call: true,
-    call_number: '+1-555-HOSPITAL'
-  },
-  FIRE: {
-    department: 'fire',
-    priority_threshold: 30,
-    auto_call: true,
-    call_number: '+1-555-FIRE-DEPT'
-  },
-  // ... etc
-}
-```
-
-### **3. Test Emergency Dispatch**
-
-1. Go to http://localhost:3000/test-emergency
-2. Submit a test fire emergency
-3. Check:
-   - ✅ 112 call logged (Twilio console)
-   - ✅ Government dashboard updated
-   - ✅ Priority score calculated
-4. All good? Ready for production!
-
-### **4. Enable Government Dashboard**
-
-```bash
-# Create government admin account
-npm run create:government-admin -- \
-  --email=admin@government.gov \
-  --password=secure-password
-
-# Enable real-time notifications
-npm run enable:notifications -- --webhook=your-webhook-url
-```
-
----
-
-## 📱 **OFFLINE MODE IN ACTION**
-
-### **Scenario: Rural Area with No Signal**
-
-```
-Step 1: User in rural area gets injured
-  Time: 3:45 PM
-  Signal: NONE
-  ↓
-
-Step 2: Opens app (PWA, works offline)
-  • Takes photo of injury
-  • Records: "Car accident on highway 5, person bleeding"
-  • Clicks Submit
-  ↓
-
-Step 3: Data stored locally
-  • Status: "PENDING SYNC"
-  • Stored in IndexedDB
-  • App shows: "Will send when internet available"
-  ↓
-
-Step 4: User gets to area with signal
-  Time: 4:20 PM
-  Signal: 3G available
-  ↓
-
-Step 5: App auto-syncs
-  • Data uploads to government server
-  • ML models prioritize: CRITICAL (fire/injury detected)
-  • 112 called automatically with: location + details
-  ↓
-
-Step 6: Parallel delivery
-  • 112 dispatcher receives call
-  • Government dashboard updated
-  • Hospital prepped (emergency incoming)
-  ↓
-
-Step 7: Result
-  Response time: 35 minutes instead of never reaching help
-  Lives saved: 1
-  ✓ Success
-```
-
----
-
-## � **REAL-WORLD IMPACT & ECONOMIC VALUE**
-
-### **Before (Without This System) - Current Reality**
-- ❌ **No digital record** of emergencies in offline areas
-- ❌ **35-40%** of emergency calls in rural areas **never successfully connect**
-- ⏱️ **60+ minute average response time** in remote areas vs 10 min in cities (6x worse)
-- 💔 **250,000+ preventable deaths annually** due to response delays
-- 📊 **Zero government data** on emergencies in disconnected regions
-- 🚑 **Hospitals unprepared** - no advance notice of incoming emergencies
-- 💰 **$2.3 trillion** annual global cost (preventable deaths + delayed care)
-- 👨‍🏭 **Rural development paralyzed** - unsafe conditions, loss of workforce
 
 ### **After (With Emergency Truth Engine) - Transformed Reality**
 - ✅ **Complete digital record** of 100% of emergencies
@@ -954,23 +787,11 @@ Download historical analytics
 
 ---
 
-## 💬 **SUPPORT & CONTACT**
 
-### **Get Started**
-- 🌐 **Website:** https://emergencytruthengine.io
-- 📧 **Email:** partnerships@emergencytruthengine.io
-- 📱 **WhatsApp:** +1-800-EMERGENCY (for testing)
-- 💼 **LinkedIn:** [XORcists Emergency Systems](https://linkedin.com)
 
 ### **For Developers**
 - 🐛 **GitHub Issues:** [Report bugs](https://github.com/yourusername/emergency-truth-engine/issues)
 - 💬 **Discussions:** [Ask questions](https://github.com/yourusername/emergency-truth-engine/discussions)
-- 📚 **Community Wiki:** [Knowledge base](https://wiki.emergencytruthengine.io)
-
-### **For Governments/NGOs**
-- 👨‍💼 **Government Programs:** partnerships@emergencytruthengine.io
-- 📊 **Pilot Programs:** Contact regional coordinator
-- 🌍 **Scaling Support:** Implementation team available
 
 ---
 
@@ -990,18 +811,9 @@ This project is licensed under the **MIT License** - see [LICENSE](./LICENSE) fi
 
 This system was built to address one core truth:
 
-> **"In 2024, your ability to survive an emergency depends more on geography than medicine."**
+> **"In low-connectivity environments, your ability to survive an emergency depends more on connection stability than medicine."**
 
-A cardiac arrest in a city? 10-minute response, 70% survival.  
-A cardiac arrest in a rural area? 60-minute response or never reaching help, 10% survival.
-
-**This system fixes that.**
-
-By making emergencies visible to government systems even without perfect connectivity, we save lives. By prioritizing intelligently, we save more lives. By providing fail-safe redundancy, we ensure no emergency is missed.
-
-The economic case is irrefutable: $7,500-$15,000 ROI per dollar spent.
-
-**The humanitarian case is non-negotiable: lives.**
+A medical emergency in a connected urban center has a clear dispatch timeline, whereas remote emergencies are often invisible due to network constraints. By building an offline-first reporting client, prioritizing sync records based on user-provided signals, resolving sync conflict via idempotent UUID keys, and using Gemini for structured, safe validation, this engine ensures that no emergency goes unrecorded.
 
 ---
 
@@ -1010,26 +822,11 @@ The economic case is irrefutable: $7,500-$15,000 ROI per dollar spent.
 If you believe emergency response should reach everyone, everywhere:
 
 - ⭐ **Star this repository** on GitHub
-- 🔗 **Share with government agencies** in your country
+- 🔗 **Share with development teams** and emergency responders
 - 💼 **Contribute code** - Pull requests welcome
-- 🎓 **Advocate** - Tell people about the system
-- 💰 **Fund** - Donate to expand to more regions
 
 ---
 
 **Built with ❤️ by XORcists Team**  
 *Emergency response. No more invisible areas.*
-
----
-
-## 🎯 **One More Thing: The Vision**
-
-By 2030, we envision:
-- ✅ Every government has emergency visibility into rural areas
-- ✅ 50M+ lives saved through faster emergency response
-- ✅ $1T+ in prevented healthcare costs
-- ✅ Rural areas as safe as urban centers
-- ✅ No human is invisible to emergency services
-
-**Let's make emergencies visible. Everywhere.**
 

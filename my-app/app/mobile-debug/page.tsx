@@ -67,7 +67,7 @@ export default function MobileDebugPage() {
             <StatusItem 
               label="Connection" 
               status={protocol === 'http:' ? 'warning' : 'pass'}
-              message={`Using ${protocol} on ${window.location.host}`}
+              message={`Using ${protocol} on ${typeof window !== 'undefined' ? window.location.host : ''}`}
             />
             
             <StatusItem 

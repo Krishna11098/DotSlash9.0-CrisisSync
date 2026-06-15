@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
           Authorization: `Token ${deepgramKey}`,
           "Content-Type": "application/octet-stream",
         },
-        body: audioBuffer,
+        body: new Uint8Array(audioBuffer),
       }
     );
 

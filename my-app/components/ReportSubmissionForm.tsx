@@ -212,11 +212,16 @@ export function ReportSubmissionForm() {
     setState({ loading: true, submitted: false });
 
     try {
+      const clientReportId = crypto.randomUUID();
+      const clientCreatedAt = new Date().toISOString();
+
       const response = await fetch("/api/submit-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          client_report_id: clientReportId,
+          client_created_at: clientCreatedAt,
           // Map department UI names to database values
           departments: formData.departments.map(dept => 
             dept === "municipal corporation" ? "municipal corporation" : dept
@@ -554,6 +559,7 @@ function ResultScreen({
     HIGH: "bg-orange-100 border-orange-500 text-orange-900",
     MEDIUM: "bg-yellow-100 border-yellow-500 text-yellow-900",
     LOW: "bg-green-100 border-green-500 text-green-900",
+    PENDING: "bg-zinc-100 border-zinc-500 text-zinc-900",
   };
 
   const priorityEmoji = {
@@ -561,6 +567,7 @@ function ResultScreen({
     HIGH: "⚠️",
     MEDIUM: "📌",
     LOW: "✓",
+    PENDING: "⏳",
   };
 
   return (

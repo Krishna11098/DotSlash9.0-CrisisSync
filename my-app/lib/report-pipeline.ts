@@ -5,6 +5,33 @@
  */
 
 import { VerificationResult, PrioritizationInput, PrioritizationOutput, SubmissionRequest, FinalResponse } from "./report-types";
+import { z } from "zod";
+
+export const GeminiResponseSchema = z.object({
+  scene_description: z.string(),
+  primary_category: z.enum([
+    "fire",
+    "water",
+    "accident",
+    "building_collapse",
+    "medical",
+    "crowd_disaster",
+    "crime",
+    "controlled_fire",
+    "recreational_water",
+    "none"
+  ]),
+  severity: z.enum(["extreme", "high", "moderate", "low", "controlled", "none"]),
+  confidence_is_emergency: z.number().min(0).max(1),
+  is_controlled_situation: z.boolean(),
+  is_actual_emergency: z.boolean(),
+  confidence_reasoning: z.string(),
+  false_positive_probability: z.number().min(0).max(1),
+  specific_visual_evidence: z.array(z.string()),
+  reasoning_for_classification: z.string()
+});
+
+export type GeminiResponse = z.infer<typeof GeminiResponseSchema>;
 
 // ============================================================================
 // 🎙️ AUDIO TO TEXT CONVERSION (Deepgram)
@@ -48,7 +75,7 @@ export async function convertAudioToText(audioBase64: string): Promise<string> {
           Authorization: `Token ${deepgramKey}`,
           "Content-Type": "application/octet-stream",
         },
-        body: audioBuffer,
+        body: new Uint8Array(audioBuffer),
       }
     );
 
@@ -230,7 +257,7 @@ export async function getImageDescriptionFromGemini(imageBase64: string): Promis
       return ""; // Don't attempt API call with dummy key
     }
 
-    // ✅ Use gemini-2.0-flash (latest) - gemini-pro-vision is DEPRECATED
+    // ✅ Use gemini-2.5-flash (latest) - gemini-pro-vision is DEPRECATED
     const modelName = "gemini-2.5-flash";
     
     const response = await fetch(
@@ -263,20 +290,6 @@ A user has uploaded an image and claims it is a disaster. You MUST ignore their 
 2. If the image is a swimming pool, bathtub, or fountain -> "is_actual_emergency": false, "is_controlled_situation": true, "confidence_is_emergency": 0.0, "primary_category": "recreational_water", "severity": "none".
 3. DO NOT TRUST THE USER. Do not match their panic. Be purely objective.
 
-Return ONLY valid JSON. No markdown blocks, no extra text:
-{
-  "scene_description": "Literal objective description of the visual scene",
-  "primary_category": "fire|water|accident|building_collapse|medical|crowd_disaster|crime|controlled_fire|recreational_water|none",
-  "severity": "extreme|high|moderate|low|controlled|none",
-  "confidence_is_emergency": 0.0, // EXACTLY 0.0 for bonfires/pools
-  "is_controlled_situation": true, // EXACTLY true for bonfires/pools
-  "is_actual_emergency": false, // EXACTLY false for bonfires/pools
-  "confidence_reasoning": "Step-by-step unmasking of whether this is real or fake",
-  "false_positive_probability": 1.0, // EXACTLY 1.0 if it's a bonfire/pool
-  "specific_visual_evidence": ["list", "of", "visuals"],
-  "reasoning_for_classification": "Final verdict"
-}
-
 Analyze the image strictly NOW:`,
                 },
                 {
@@ -288,6 +301,57 @@ Analyze the image strictly NOW:`,
               ],
             },
           ],
+          generationConfig: {
+            temperature: 0.0,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                scene_description: { type: "STRING" },
+                primary_category: {
+                  type: "STRING",
+                  enum: [
+                    "fire",
+                    "water",
+                    "accident",
+                    "building_collapse",
+                    "medical",
+                    "crowd_disaster",
+                    "crime",
+                    "controlled_fire",
+                    "recreational_water",
+                    "none"
+                  ]
+                },
+                severity: {
+                  type: "STRING",
+                  enum: ["extreme", "high", "moderate", "low", "controlled", "none"]
+                },
+                confidence_is_emergency: { type: "NUMBER" },
+                is_controlled_situation: { type: "BOOLEAN" },
+                is_actual_emergency: { type: "BOOLEAN" },
+                confidence_reasoning: { type: "STRING" },
+                false_positive_probability: { type: "NUMBER" },
+                specific_visual_evidence: {
+                  type: "ARRAY",
+                  items: { type: "STRING" }
+                },
+                reasoning_for_classification: { type: "STRING" }
+              },
+              required: [
+                "scene_description",
+                "primary_category",
+                "severity",
+                "confidence_is_emergency",
+                "is_controlled_situation",
+                "is_actual_emergency",
+                "confidence_reasoning",
+                "false_positive_probability",
+                "specific_visual_evidence",
+                "reasoning_for_classification"
+              ]
+            }
+          }
         }),
       }
     );
@@ -372,13 +436,26 @@ export function validateImageVsUserClaim(
       return { matchScore: 0.05, isRealEmergency: false, reasoning: "Could not parse image analysis" };
     }
 
+    // Validate with Zod Schema
+    const result = GeminiResponseSchema.safeParse(geminiAnalysis);
+    if (!result.success) {
+      console.error("❌ Gemini response failed validation against Zod schema:", result.error.format());
+      return { 
+        matchScore: 0.1, // Fallback to lower score/manual review
+        isRealEmergency: false, 
+        reasoning: "Image verification failed structured output schema validation. Routing for manual verification." 
+      };
+    }
+
+    const validatedAnalysis = result.data;
+
     // Extract ALL critical fields from Gemini analysis
-    const isImageEmergency = geminiAnalysis.is_actual_emergency === true;
-    const isControlledSituation = geminiAnalysis.is_controlled_situation === true;
-    const imageConfidence = geminiAnalysis.confidence_is_emergency || 0;
-    const falsePositiveProbability = geminiAnalysis.false_positive_probability || 0;
-    const imageCategory = geminiAnalysis.primary_category || "none";
-    const imageSeverity = geminiAnalysis.severity || "none";
+    const isImageEmergency = validatedAnalysis.is_actual_emergency === true;
+    const isControlledSituation = validatedAnalysis.is_controlled_situation === true;
+    const imageConfidence = validatedAnalysis.confidence_is_emergency || 0;
+    const falsePositiveProbability = validatedAnalysis.false_positive_probability || 0;
+    const imageCategory = validatedAnalysis.primary_category || "none";
+    const imageSeverity = validatedAnalysis.severity || "none";
     const userClaim = userClaimText.toLowerCase();
 
     console.log(`\n🔒 [ULTRA STRICT IMAGE VALIDATION]`);
@@ -390,8 +467,8 @@ export function validateImageVsUserClaim(
     // ============================================================================
     // LAYER 1: CONTROLLED SITUATION DETECTION - IMMEDIATE REJECT
     // ============================================================================
-    const sceneDescObj = (geminiAnalysis.scene_description || "").toLowerCase();
-    const reasonObj = (geminiAnalysis.reasoning_for_classification || "").toLowerCase();
+    const sceneDescObj = (validatedAnalysis.scene_description || "").toLowerCase();
+    const reasonObj = (validatedAnalysis.reasoning_for_classification || "").toLowerCase();
     const combinedText = sceneDescObj + " " + reasonObj;
     
     // HARDCODED OVERRIDE: If the scene physically describes non-emergencies, OVERRIDE GEMINI'S DECISION entirely
